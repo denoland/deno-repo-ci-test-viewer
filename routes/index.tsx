@@ -75,6 +75,14 @@ export default define.page<typeof handler>(function Home({ data }) {
         <div class="mb-8">
           <h1 class="text-4xl font-bold mb-2">Deno CI Test Viewer</h1>
           <p class="text-gray-600">View test results from recent CI runs</p>
+          <div class="mt-4">
+            <a
+              href="/insights"
+              class="inline-flex items-center px-4 py-2 bg-yellow-500 text-white rounded hover:bg-yellow-600 transition-colors text-sm font-semibold"
+            >
+              📊 View Test Insights (Main Branch)
+            </a>
+          </div>
         </div>
 
         <div class="bg-white rounded-lg shadow">

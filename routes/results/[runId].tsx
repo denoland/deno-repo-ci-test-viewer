@@ -162,7 +162,7 @@ function getJobStats(job: JobTestResults): JobStats {
 
   // Get top 10 longest tests (only root level tests)
   const longest = job.tests
-    .filter((test) => test.duration)
+    .filter((test) => test.duration != null && !isUnitTest(test))
     .sort((a, b) => (b.duration || 0) - (a.duration || 0))
     .slice(0, 10);
 
@@ -288,9 +288,7 @@ export default define.page<typeof handler>(function TestResultsPage({ data }) {
       if (!test.duration || test.duration === 0) return;
 
       // Skip unit tests
-      if (
-        test.name.startsWith("unit::") || test.name.startsWith("unit_node::")
-      ) {
+      if ( isUnitTest(test)) {
         return;
       }
 
@@ -447,3 +445,7 @@ export default define.page<typeof handler>(function TestResultsPage({ data }) {
     </div>
   );
 });
+
+function isUnitTest(test: RecordedTestResult) {
+        return test.name.startsWith("unit::") || test.name.startsWith("unit_node::")
+}
