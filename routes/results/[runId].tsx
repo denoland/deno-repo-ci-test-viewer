@@ -1,9 +1,9 @@
-import { define } from "../../utils.ts";
+import { define } from "@/app.ts";
 import type {
   JobTestResults,
   RecordedTestResult,
-} from "../../lib/test-results-downloader.ts";
-import type { WorkflowRun } from "../../lib/github-api-client.ts";
+} from "@/lib/test-results-downloader.ts";
+import type { WorkflowRun } from "@/lib/github-api-client.ts";
 
 export const handler = define.handlers({
   async GET(ctx) {
@@ -15,13 +15,8 @@ export const handler = define.handlers({
 
     const githubClient = await ctx.state.store.get("githubClient");
     const run: WorkflowRun = await githubClient.getWorkflowRun(runId);
-
-    // Only download artifacts if the run is completed
-    let results: JobTestResults[] = [];
-    if (run.status === "completed") {
-      const downloader = await ctx.state.store.get("downloader");
-      results = await downloader.downloadForRunId(runId);
-    }
+    const downloader = ctx.state.store.get("downloader");
+    const results = await downloader.downloadForRunId(runId);
 
     return { data: { runId, run, results } };
   },
@@ -135,17 +130,120 @@ function TestResultItem(
   );
 }
 
-function TestSuite({ suite }: { suite: JobTestResults }) {
+interface JobStats {
+  jobName: string;
+  failed: RecordedTestResult[];
+  flaky: RecordedTestResult[];
+  longest: RecordedTestResult[];
+  totalDuration: number;
+}
+
+function flattenTestsInJob(tests: RecordedTestResult[]): RecordedTestResult[] {
+  const flattened: RecordedTestResult[] = [];
+
+  function flatten(test: RecordedTestResult) {
+    flattened.push(test);
+    if (test.subTests) {
+      test.subTests.forEach(flatten);
+    }
+  }
+
+  tests.forEach(flatten);
+  return flattened;
+}
+
+function getJobStats(job: JobTestResults): JobStats {
+  const allTests = flattenTestsInJob(job.tests);
+
+  const failed = allTests.filter((test) => test.failed);
+  const flaky = allTests.filter(
+    (test) => test.flakyCount && test.flakyCount > 0,
+  );
+
+  // Get top 10 longest tests (only root level tests)
+  const longest = job.tests
+    .filter((test) => test.duration)
+    .sort((a, b) => (b.duration || 0) - (a.duration || 0))
+    .slice(0, 10);
+
+  // Calculate total duration
+  const totalDuration = allTests.reduce(
+    (sum, test) => sum + (test.duration || 0),
+    0,
+  );
+
+  return {
+    jobName: job.name,
+    failed,
+    flaky,
+    longest,
+    totalDuration,
+  };
+}
+
+function JobSection({ job }: { job: JobStats }) {
+  const hasContent = job.failed.length > 0 || job.flaky.length > 0 ||
+    job.longest.length > 0;
+
+  if (!hasContent) return null;
+
   return (
     <div class="bg-white rounded-lg shadow-md mb-6">
-      <div class="bg-gray-100 px-4 py-3 rounded-t-lg border-b border-gray-300">
-        <h3 class="font-semibold text-lg">{suite.name}</h3>
+      <div class="bg-blue-100 px-4 py-3 rounded-t-lg border-b border-blue-300">
+        <div class="flex items-center justify-between">
+          <h2 class="font-semibold text-xl">{job.jobName}</h2>
+          <div class="text-sm text-blue-900">
+            <span class="font-semibold">
+              {formatDuration(job.totalDuration)}
+            </span>
+          </div>
+        </div>
       </div>
-      <div>
-        {suite.tests.map((test) => (
-          <TestResultItem test={test} key={test.name} />
-        ))}
-      </div>
+
+      {job.failed.length > 0 && (
+        <div class="border-b border-gray-200">
+          <div class="bg-red-50 px-4 py-2 border-b border-red-200">
+            <h3 class="font-semibold text-red-900">
+              ❌ Failed Tests ({job.failed.length})
+            </h3>
+          </div>
+          <div>
+            {job.failed.map((test, idx) => (
+              <TestResultItem test={test} key={idx} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {job.flaky.length > 0 && (
+        <div class="border-b border-gray-200">
+          <div class="bg-yellow-50 px-4 py-2 border-b border-yellow-200">
+            <h3 class="font-semibold text-yellow-900">
+              ⚠️ Flaky Tests ({job.flaky.length})
+            </h3>
+          </div>
+          <div>
+            {job.flaky.map((test, idx) => (
+              <TestResultItem test={test} key={idx} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {job.longest.length > 0 && (
+        <div>
+          <div class="bg-blue-50 px-4 py-2 border-b border-blue-200">
+            <h3 class="font-semibold text-blue-900">
+              ⏱️ Top 10 Longest Tests
+            </h3>
+          </div>
+          <div>
+            {job.longest.map((test, idx) => (
+              <TestResultItem test={test} key={idx} />
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -153,48 +251,96 @@ function TestSuite({ suite }: { suite: JobTestResults }) {
 export default define.page<typeof handler>(function TestResultsPage({ data }) {
   const { runId, run, results } = data;
 
-  if (run.status !== "completed") {
-    return (
-      <div class="container mx-auto px-4 py-8 max-w-7xl">
-        <div class="mb-8">
-          <h1 class="text-3xl font-bold mb-2">Test Results for Run #{runId}</h1>
-          <a
-            href="/"
-            class="text-blue-600 hover:text-blue-800 text-sm"
-          >
-            ← Back to runs list
-          </a>
-        </div>
+  const stats = calculateStats(results);
+  const jobStats = results.map(getJobStats).sort((a, b) =>
+    a.jobName.localeCompare(b.jobName)
+  );
 
-        <div class="bg-blue-50 border border-blue-200 rounded-lg p-8 text-center">
-          <div class="text-6xl mb-4">⏳</div>
-          <h2 class="text-2xl font-bold mb-2">CI Run Pending</h2>
-          <p class="text-gray-700 mb-4">
-            This workflow run is still in progress. Test results will be
-            available once the run completes.
-          </p>
-          <div class="text-sm text-gray-600">
-            Status: <span class="font-semibold">{run.status}</span>
-          </div>
-          <div class="mt-6">
-            <a
-              href={`/results/${runId}`}
-              class="inline-block px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
-            >
-              Refresh Page
-            </a>
-          </div>
-        </div>
-      </div>
-    );
+  // Calculate normalized slowest tests across all jobs
+  // Normalize each test's duration relative to its job's median duration
+  interface NormalizedTest {
+    name: string;
+    path: string;
+    normalizedScore: number;
+    avgDuration: number;
+    jobCount: number;
   }
 
-  const stats = calculateStats(results);
+  const testNormalizedScores = new Map<
+    string,
+    { scores: number[]; durations: number[]; path: string }
+  >();
+
+  results.forEach((jobResult) => {
+    // Flatten all tests in this job to get all durations
+    const allTests = flattenTestsInJob(jobResult.tests);
+    const allDurations = allTests
+      .map((t) => t.duration || 0)
+      .filter((d) => d > 0)
+      .sort((a, b) => a - b);
+
+    const median = allDurations.length > 0
+      ? allDurations[Math.floor(allDurations.length / 2)]
+      : 1;
+
+    // Process all tests from this job
+    allTests.forEach((test) => {
+      if (!test.duration || test.duration === 0) return;
+
+      // Skip unit tests
+      if (
+        test.name.startsWith("unit::") || test.name.startsWith("unit_node::")
+      ) {
+        return;
+      }
+
+      if (!testNormalizedScores.has(test.name)) {
+        testNormalizedScores.set(test.name, {
+          scores: [],
+          durations: [],
+          path: test.path,
+        });
+      }
+      const data = testNormalizedScores.get(test.name)!;
+      // Normalize: how many times slower than the median test in this job?
+      const normalizedScore = (test.duration || 0) / median;
+      data.scores.push(normalizedScore);
+      data.durations.push(test.duration || 0);
+    });
+  });
+
+  // Calculate average normalized score for each test
+  const normalizedTests: NormalizedTest[] = Array.from(
+    testNormalizedScores.entries(),
+  ).map(
+    ([name, data]) => {
+      const avgScore = data.scores.reduce((a, b) => a + b, 0) /
+        data.scores.length;
+      const avgDuration = data.durations.reduce((a, b) => a + b, 0) /
+        data.durations.length;
+
+      return {
+        name,
+        path: data.path,
+        normalizedScore: avgScore,
+        avgDuration,
+        jobCount: data.scores.length,
+      };
+    },
+  );
+
+  // Sort by normalized score (tests that are consistently slow relative to their job)
+  const topAveragedTests = normalizedTests
+    .sort((a, b) => b.normalizedScore - a.normalizedScore)
+    .slice(0, 15);
 
   return (
     <div class="container mx-auto px-4 py-8 max-w-7xl">
       <div class="mb-8">
         <h1 class="text-3xl font-bold mb-2">Test Results for Run #{runId}</h1>
+        <div class="text-gray-600 mb-2">
+          Branch: <span class="font-semibold">{run.head_branch}</span>
+        </div>
         <a
           href="/"
           class="text-blue-600 hover:text-blue-800 text-sm"
@@ -202,6 +348,21 @@ export default define.page<typeof handler>(function TestResultsPage({ data }) {
           ← Back to runs list
         </a>
       </div>
+
+      {run.status !== "completed" && (
+        <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-8">
+          <div class="flex items-center">
+            <div class="flex-shrink-0">
+              <span class="text-2xl">⚠️</span>
+            </div>
+            <div class="ml-3">
+              <p class="text-sm text-yellow-800">
+                <span class="font-semibold">Warning:</span> This workflow run hasn't completed yet (Status: {run.status}). Test results may be incomplete.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
         <div class="bg-white rounded-lg shadow p-4">
@@ -240,7 +401,48 @@ export default define.page<typeof handler>(function TestResultsPage({ data }) {
       </div>
 
       <div>
-        {results.map((suite) => <TestSuite suite={suite} key={suite.name} />)}
+        {topAveragedTests.length > 0 && (
+          <div class="bg-white rounded-lg shadow-md mb-6">
+            <div class="bg-purple-100 px-4 py-3 rounded-t-lg border-b border-purple-300">
+              <h2 class="font-semibold text-xl">
+                📊 Top 15 Slowest Tests (Averaged Across Jobs)
+              </h2>
+              <p class="text-sm text-purple-900 mt-1">
+                Tests that consistently take the longest time across multiple
+                jobs
+              </p>
+            </div>
+            <div>
+              {topAveragedTests.map((test, idx) => (
+                <div key={idx}>
+                  <div class="py-2 px-4 border-b border-gray-200 hover:bg-gray-50">
+                    <div class="flex items-center gap-3">
+                      <span class="font-mono text-sm flex-1">{test.name}</span>
+                      <span
+                        class="text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded cursor-help"
+                        title={`This test is on average ${
+                          test.normalizedScore.toFixed(1)
+                        }x slower than the median test in its job.`}
+                      >
+                        {test.normalizedScore.toFixed(1)}x slower
+                      </span>
+                      <span class="text-xs text-gray-600 font-semibold">
+                        {formatDuration(test.avgDuration)}
+                      </span>
+                    </div>
+                    {test.path && (
+                      <div class="text-xs text-gray-500 mt-1 ml-0">
+                        {test.path}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {jobStats.map((job) => <JobSection job={job} key={job.jobName} />)}
       </div>
     </div>
   );

@@ -13,6 +13,16 @@ export class RunsFetcher {
     perPage = 30,
     page = 1,
   ): Promise<{ runs: WorkflowRun[]; totalCount: number }> {
-    return await this.#githubClient.listWorkflowRuns(perPage, page);
+    const result = await this.#githubClient.listWorkflowRuns(perPage, page);
+
+    // Filter to only "ci" workflow runs
+    const filteredRuns = result.runs.filter(
+      (run) => run.name.toLowerCase() === "ci",
+    );
+
+    return {
+      runs: filteredRuns,
+      totalCount: result.totalCount,
+    };
   }
 }
