@@ -44,19 +44,22 @@ export type GitHubApiClient = ExtractInterface<RealGitHubApiClient>;
 
 export class RealGitHubApiClient {
   readonly #fileFetcher: FileFetcher;
-  readonly #token: string;
+  readonly #token: string | undefined;
 
-  constructor(fileFetcher: FileFetcher, token: string) {
+  constructor(fileFetcher: FileFetcher, token: string | undefined) {
     this.#fileFetcher = fileFetcher;
     this.#token = token;
   }
 
   #getHeaders(): HeadersInit {
-    return {
+    const obj: Record<string, string> = {
       "Accept": "application/vnd.github+json",
       "X-GitHub-Api-Version": "2022-11-28",
-      "Authorization": `Bearer ${this.#token}`,
     };
+    if (this.#token) {
+      obj["Authorization"] = `Bearer ${this.#token}`;
+    }
+    return obj;
   }
 
   async listWorkflowRuns(
