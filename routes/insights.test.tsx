@@ -1,16 +1,15 @@
 import { assertEquals } from "@std/assert";
 import { InsightsPageController } from "./insights.tsx";
-import type {
-  GitHubApiClient,
-  WorkflowRun,
-} from "../lib/github-api-client.ts";
+import type { GitHubApiClient, WorkflowRun } from "../lib/github-api-client.ts";
 import type {
   JobTestResults,
   TestResultsDownloader,
 } from "../lib/test-results-downloader.ts";
+import { NullLogger } from "../logger.ts";
 
 interface RunsWithCount {
-  totalCount: number; runs: WorkflowRun[]
+  totalCount: number;
+  runs: WorkflowRun[];
 }
 
 class MockGitHubApiClient implements Pick<GitHubApiClient, "listWorkflowRuns"> {
@@ -81,7 +80,11 @@ Deno.test("filters main branch completed CI runs", async () => {
   mockDownloader.mockResults(1, []);
   mockDownloader.mockResults(5, []);
 
-  const controller = new InsightsPageController(mockGithub, mockDownloader);
+  const controller = new InsightsPageController(
+    new NullLogger(),
+    mockGithub,
+    mockDownloader,
+  );
   const result = await controller.get();
 
   assertEquals(result.data.totalRunsAnalyzed, 2);
@@ -94,8 +97,9 @@ Deno.test("limits to 20 main branch runs", async () => {
   const mockDownloader = new MockTestResultsDownloader();
 
   // Create 30 main branch CI runs
-  const runs = Array.from({ length: 30 }, (_, i) =>
-    createMockRun(i + 1, "CI", "completed", "main")
+  const runs = Array.from(
+    { length: 30 },
+    (_, i) => createMockRun(i + 1, "CI", "completed", "main"),
   );
 
   mockGithub.mockRuns({ totalCount: 30, runs });
@@ -105,7 +109,11 @@ Deno.test("limits to 20 main branch runs", async () => {
     mockDownloader.mockResults(i, []);
   }
 
-  const controller = new InsightsPageController(mockGithub, mockDownloader);
+  const controller = new InsightsPageController(
+    new NullLogger(),
+    mockGithub,
+    mockDownloader,
+  );
   const result = await controller.get();
 
   assertEquals(result.data.totalRunsAnalyzed, 20);
@@ -150,7 +158,11 @@ Deno.test("tracks flaky tests", async () => {
     },
   ]);
 
-  const controller = new InsightsPageController(mockGithub, mockDownloader);
+  const controller = new InsightsPageController(
+    new NullLogger(),
+    mockGithub,
+    mockDownloader,
+  );
   const result = await controller.get();
 
   assertEquals(result.data.flakyTests.length, 1);
@@ -201,7 +213,11 @@ Deno.test("tracks failed tests", async () => {
     },
   ]);
 
-  const controller = new InsightsPageController(mockGithub, mockDownloader);
+  const controller = new InsightsPageController(
+    new NullLogger(),
+    mockGithub,
+    mockDownloader,
+  );
   const result = await controller.get();
 
   assertEquals(result.data.failedTests.length, 1);
@@ -239,7 +255,11 @@ Deno.test("processes nested subtests", async () => {
     },
   ]);
 
-  const controller = new InsightsPageController(mockGithub, mockDownloader);
+  const controller = new InsightsPageController(
+    new NullLogger(),
+    mockGithub,
+    mockDownloader,
+  );
   const result = await controller.get();
 
   assertEquals(result.data.failedTests.length, 1);
@@ -281,7 +301,11 @@ Deno.test("sorts flaky tests by total count", async () => {
     },
   ]);
 
-  const controller = new InsightsPageController(mockGithub, mockDownloader);
+  const controller = new InsightsPageController(
+    new NullLogger(),
+    mockGithub,
+    mockDownloader,
+  );
   const result = await controller.get();
 
   assertEquals(result.data.flakyTests.length, 3);
@@ -350,7 +374,11 @@ Deno.test("sorts failed tests by failure count", async () => {
     },
   ]);
 
-  const controller = new InsightsPageController(mockGithub, mockDownloader);
+  const controller = new InsightsPageController(
+    new NullLogger(),
+    mockGithub,
+    mockDownloader,
+  );
   const result = await controller.get();
 
   assertEquals(result.data.failedTests.length, 2);
@@ -374,7 +402,11 @@ Deno.test("handles download errors gracefully", async () => {
   // Only mock results for run 2, run 1 will fail
   mockDownloader.mockResults(2, []);
 
-  const controller = new InsightsPageController(mockGithub, mockDownloader);
+  const controller = new InsightsPageController(
+    new NullLogger(),
+    mockGithub,
+    mockDownloader,
+  );
   const result = await controller.get();
 
   // Should still return results even though one download failed
@@ -404,7 +436,11 @@ Deno.test("returns empty lists when no issues found", async () => {
     },
   ]);
 
-  const controller = new InsightsPageController(mockGithub, mockDownloader);
+  const controller = new InsightsPageController(
+    new NullLogger(),
+    mockGithub,
+    mockDownloader,
+  );
   const result = await controller.get();
 
   assertEquals(result.data.flakyTests.length, 0);

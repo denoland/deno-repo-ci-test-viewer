@@ -33,7 +33,8 @@ class MockGitHubApiClient {
 }
 
 class MockArtifactParser {
-  #results: Map<string, { name: string; tests: RecordedTestResult[] }> = new Map();
+  #results: Map<string, { name: string; tests: RecordedTestResult[] }> =
+    new Map();
 
   mockParseResult(
     artifactName: string,
@@ -51,7 +52,8 @@ class MockArtifactParser {
   }
 }
 
-class MockTestResultArtifactStore extends Map<string, AsyncValue<ParsedTestResultArtifact>> {
+class MockTestResultArtifactStore
+  extends Map<string, AsyncValue<ParsedTestResultArtifact>> {
 }
 
 function createMockArtifact(
@@ -85,8 +87,16 @@ Deno.test("download test results for run", async () => {
 
   // Setup mocks
   const artifacts = [
-    createMockArtifact(1, "test-results-linux.json", "https://example.com/1.zip"),
-    createMockArtifact(2, "test-results-macos.json", "https://example.com/2.zip"),
+    createMockArtifact(
+      1,
+      "test-results-linux.json",
+      "https://example.com/1.zip",
+    ),
+    createMockArtifact(
+      2,
+      "test-results-macos.json",
+      "https://example.com/2.zip",
+    ),
     createMockArtifact(3, "build-logs.txt", "https://example.com/3.zip"), // Should be filtered out
   ];
 
@@ -166,7 +176,11 @@ Deno.test("cache artifacts by download URL", async () => {
 
   // Setup mocks
   const artifacts = [
-    createMockArtifact(1, "test-results-cached.json", "https://example.com/cached.zip"),
+    createMockArtifact(
+      1,
+      "test-results-cached.json",
+      "https://example.com/cached.zip",
+    ),
   ];
 
   mockClient.mockArtifacts(789, artifacts);
@@ -304,23 +318,46 @@ Deno.test("download multiple artifacts in parallel", async () => {
 
   // Setup mocks with 5 artifacts
   const artifacts = [
-    createMockArtifact(1, "test-results-linux.json", "https://example.com/1.zip"),
-    createMockArtifact(2, "test-results-macos.json", "https://example.com/2.zip"),
-    createMockArtifact(3, "test-results-windows.json", "https://example.com/3.zip"),
-    createMockArtifact(4, "test-results-freebsd.json", "https://example.com/4.zip"),
-    createMockArtifact(5, "test-results-docker.json", "https://example.com/5.zip"),
+    createMockArtifact(
+      1,
+      "test-results-linux.json",
+      "https://example.com/1.zip",
+    ),
+    createMockArtifact(
+      2,
+      "test-results-macos.json",
+      "https://example.com/2.zip",
+    ),
+    createMockArtifact(
+      3,
+      "test-results-windows.json",
+      "https://example.com/3.zip",
+    ),
+    createMockArtifact(
+      4,
+      "test-results-freebsd.json",
+      "https://example.com/4.zip",
+    ),
+    createMockArtifact(
+      5,
+      "test-results-docker.json",
+      "https://example.com/5.zip",
+    ),
   ];
 
   mockClient.mockArtifacts(222, artifacts);
 
   for (let i = 1; i <= 5; i++) {
     mockClient.mockBlob(`https://example.com/${i}.zip`, new Blob([`test${i}`]));
-    mockParser.mockParseResult(`test-results-${
-      ["linux", "macos", "windows", "freebsd", "docker"][i - 1]
-    }.json`, {
-      name: ["linux", "macos", "windows", "freebsd", "docker"][i - 1],
-      tests: [{ name: `test${i}`, path: `test${i}.ts`, duration: i * 100 }],
-    });
+    mockParser.mockParseResult(
+      `test-results-${
+        ["linux", "macos", "windows", "freebsd", "docker"][i - 1]
+      }.json`,
+      {
+        name: ["linux", "macos", "windows", "freebsd", "docker"][i - 1],
+        tests: [{ name: `test${i}`, path: `test${i}.ts`, duration: i * 100 }],
+      },
+    );
   }
 
   // Execute
@@ -332,7 +369,11 @@ Deno.test("download multiple artifacts in parallel", async () => {
   assertEquals(results.length, 5);
   // Parallel execution should be significantly faster than sequential
   // Even with mocks, this should complete in well under 500ms
-  assertEquals(duration < 500, true, `Expected parallel execution, took ${duration}ms`);
+  assertEquals(
+    duration < 500,
+    true,
+    `Expected parallel execution, took ${duration}ms`,
+  );
 });
 
 Deno.test("store is shared across downloads", async () => {
@@ -348,7 +389,11 @@ Deno.test("store is shared across downloads", async () => {
 
   // Setup mocks
   const artifacts = [
-    createMockArtifact(1, "test-results-shared.json", "https://example.com/shared.zip"),
+    createMockArtifact(
+      1,
+      "test-results-shared.json",
+      "https://example.com/shared.zip",
+    ),
   ];
 
   mockClient.mockArtifacts(333, artifacts);

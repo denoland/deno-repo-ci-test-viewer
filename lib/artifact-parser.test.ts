@@ -1,12 +1,14 @@
 import { assertEquals, assertRejects } from "@std/assert";
 import { ZipArtifactParser } from "./artifact-parser.ts";
-import { BlobWriter, ZipWriter, TextReader, configure } from "@zip-js/zip-js";
+import { BlobWriter, configure, TextReader, ZipWriter } from "@zip-js/zip-js";
 import type { RecordedTestResult } from "./test-results-downloader.ts";
 
 // disable web workers to avoid resource leaks in tests
 configure({ useWebWorkers: false });
 
-async function createZipBlob(files: { filename: string; content: string }[]): Promise<Blob> {
+async function createZipBlob(
+  files: { filename: string; content: string }[],
+): Promise<Blob> {
   const blobWriter = new BlobWriter();
   const zipWriter = new ZipWriter(blobWriter);
 
@@ -151,7 +153,10 @@ Deno.test("parse artifact with multiple files (prefers JSON)", async () => {
 
   const jsonContent = JSON.stringify({ tests: testResults });
   const zipBlob = await createZipBlob([
-    { filename: "readme.txt", content: "This is not the file you're looking for" },
+    {
+      filename: "readme.txt",
+      content: "This is not the file you're looking for",
+    },
     { filename: "results.json", content: jsonContent },
     { filename: "other.txt", content: "Also not the right file" },
   ]);
@@ -223,7 +228,10 @@ Deno.test("handle complex artifact name extraction", async () => {
     { filename: "data.json", content: jsonContent },
   ]);
 
-  const result = await parser.parse("test-results-complex-name-v2.json", zipBlob);
+  const result = await parser.parse(
+    "test-results-complex-name-v2.json",
+    zipBlob,
+  );
 
   // Should strip "test-results-" prefix and ".json" suffix
   assertEquals(result.name, "complex-name-v2");

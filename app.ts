@@ -12,11 +12,15 @@ import {
 } from "./lib/github-api-client.ts";
 import { App, staticFiles } from "fresh";
 import { ConfigProvider } from "./config.ts";
+import { LoggerFactory } from "./logger.ts";
 import { InsightsPageController } from "./routes/insights.tsx";
 import { HomePageController } from "./routes/index.tsx";
 import { RunPageController } from "./routes/results/[runId].tsx";
 import { type FileFetcher, RealFileFetcher } from "./lib/file-fetcher.ts";
-import { type ArtifactParser, ZipArtifactParser } from "./lib/artifact-parser.ts";
+import {
+  type ArtifactParser,
+  ZipArtifactParser,
+} from "./lib/artifact-parser.ts";
 
 export interface AppState {
   store: AppStore;
@@ -26,6 +30,9 @@ const configProvider = new ConfigProvider();
 
 // services that live for the duration of the application
 const appStore = defineStore()
+  .add("loggerFactory", () => {
+    return new LoggerFactory();
+  })
   .add("artifactParser", (): ArtifactParser => {
     return new ZipArtifactParser();
   })
@@ -55,6 +62,9 @@ export type AppStore = ReturnType<typeof createRequestStore>;
 function createRequestStore() {
   // services that live for the duration of a request
   return appStore.createChild()
+    .add("logger", (store) => {
+      return store.get("loggerFactory").getRequestLogger();
+    })
     .add("runsFetcher", (store): RunsFetcher => {
       return new RealRunsFetcher(store.get("githubClient"));
     })
@@ -63,6 +73,7 @@ function createRequestStore() {
     })
     .add("controller.insights", (store) => {
       return new InsightsPageController(
+        store.get("logger"),
         store.get("githubClient"),
         store.get("testResultsDownloader"),
       );

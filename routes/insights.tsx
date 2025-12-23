@@ -5,6 +5,7 @@ import type {
   TestResultsDownloader,
 } from "@/lib/test-results-downloader.ts";
 import type { GitHubApiClient, WorkflowRun } from "../lib/github-api-client.ts";
+import type { Logger } from "../logger.ts";
 
 export const handler = define.handlers({
   GET(ctx) {
@@ -13,13 +14,16 @@ export const handler = define.handlers({
 });
 
 export class InsightsPageController {
+  #logger: Logger;
   #githubClient: Pick<GitHubApiClient, "listWorkflowRuns">;
   #downloader: TestResultsDownloader;
 
   constructor(
+    logger: Logger,
     githubClient: Pick<GitHubApiClient, "listWorkflowRuns">,
     downloader: TestResultsDownloader,
   ) {
+    this.#logger = logger.withContext(InsightsPageController.name);
     this.#githubClient = githubClient;
     this.#downloader = downloader;
   }
@@ -50,7 +54,10 @@ export class InsightsPageController {
         const results = await this.#downloader.downloadForRunId(run.id);
         allResults.push({ runId: run.id, run, results });
       } catch (error) {
-        console.error(`Failed to download results for run ${run.id}:`, error);
+        this.#logger.logError(
+          `Failed to download results for run ${run.id}:`,
+          error,
+        );
       }
     }
 

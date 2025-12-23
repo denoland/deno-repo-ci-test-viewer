@@ -42,7 +42,10 @@ export type TestResultsDownloader = ExtractInterface<RealTestResultsDownloader>;
 
 export class RealTestResultsDownloader {
   readonly #artifactParser: ArtifactParser;
-  readonly #githubClient: Pick<GitHubApiClient, "listArtifacts" | "downloadArtifact">;
+  readonly #githubClient: Pick<
+    GitHubApiClient,
+    "listArtifacts" | "downloadArtifact"
+  >;
   readonly #store: TestResultArtifactStore;
 
   constructor(
