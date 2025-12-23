@@ -1,6 +1,6 @@
 import { assertEquals } from "@std/assert";
 import { processTestResults } from "./[runId].tsx";
-import type { JobTestResults } from "../../lib/test-results-downloader.ts";
+import type { JobTestResults } from "@/lib/test-results-downloader.ts";
 
 Deno.test("processTestResults - calculates basic stats correctly", () => {
   const results: JobTestResults[] = [

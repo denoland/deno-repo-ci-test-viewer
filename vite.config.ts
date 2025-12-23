@@ -4,9 +4,7 @@ import tailwindcss from "@tailwindcss/vite";
 
 export default defineConfig({
   plugins: [
-    fresh({
-      serverEntry: "app.ts",
-    }),
+    fresh(),
     tailwindcss(),
   ],
 });

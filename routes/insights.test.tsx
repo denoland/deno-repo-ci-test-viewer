@@ -1,11 +1,11 @@
 import { assertEquals } from "@std/assert";
 import { InsightsPageController } from "./insights.tsx";
-import type { GitHubApiClient, WorkflowRun } from "../lib/github-api-client.ts";
+import type { GitHubApiClient, WorkflowRun } from "@/lib/github-api-client.ts";
 import type {
   JobTestResults,
   TestResultsDownloader,
-} from "../lib/test-results-downloader.ts";
-import { NullLogger } from "../logger.ts";
+} from "@/lib/test-results-downloader.ts";
+import { NullLogger } from "@/logger.ts";
 
 interface RunsWithCount {
   totalCount: number;

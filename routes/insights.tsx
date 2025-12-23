@@ -4,8 +4,8 @@ import type {
   RecordedTestResult,
   TestResultsDownloader,
 } from "@/lib/test-results-downloader.ts";
-import type { GitHubApiClient, WorkflowRun } from "../lib/github-api-client.ts";
-import type { Logger } from "../logger.ts";
+import type { GitHubApiClient, WorkflowRun } from "@/lib/github-api-client.ts";
+import type { Logger } from "@/logger.ts";
 
 export const handler = define.handlers({
   GET(ctx) {

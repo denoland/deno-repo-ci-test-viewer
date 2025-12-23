@@ -4,7 +4,7 @@ import type {
   RecordedTestResult,
   TestResultsDownloader,
 } from "@/lib/test-results-downloader.ts";
-import type { GitHubApiClient } from "../../lib/github-api-client.ts";
+import type { GitHubApiClient } from "@/lib/github-api-client.ts";
 import { formatDuration } from "@/render.tsx";
 
 export const handler = define.handlers({
