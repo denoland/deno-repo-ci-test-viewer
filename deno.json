@@ -20,7 +20,7 @@
   ],
   "imports": {
     "@/": "./",
-    "@david/service-store": "jsr:@david/service-store@^0.3.0",
+    "@david/service-store": "jsr:@david/service-store@^0.3.1",
     "@std/cache": "jsr:@std/cache@^0.2.1",
     "@zip-js/zip-js": "jsr:@zip-js/zip-js@^2.8.8",
     "fresh": "jsr:@fresh/core@^2.2.0",

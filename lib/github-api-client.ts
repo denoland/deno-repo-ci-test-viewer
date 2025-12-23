@@ -79,13 +79,17 @@ export class GitHubApiClient {
     };
   }
 
-  async getWorkflowRun(runId: number): Promise<WorkflowRun> {
+  async getWorkflowRun(runId: number): Promise<WorkflowRun | undefined> {
     const response = await fetch(
       `https://api.github.com/repos/${OWNER}/${REPO}/actions/runs/${runId}`,
       {
         headers: this.#getHeaders(),
       },
     );
+
+    if (response.status === 404) {
+      return undefined;
+    }
 
     if (!response.ok) {
       throw new Error(

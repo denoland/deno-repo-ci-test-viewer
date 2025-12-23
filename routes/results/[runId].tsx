@@ -1,26 +1,43 @@
-import { define } from "@/app.ts";
+import { define } from "@/define.ts";
 import type {
   JobTestResults,
   RecordedTestResult,
+  TestResultsDownloader,
 } from "@/lib/test-results-downloader.ts";
-import type { WorkflowRun } from "@/lib/github-api-client.ts";
+import { GitHubApiClient } from "@/lib/github-api-client.ts";
 
 export const handler = define.handlers({
-  async GET(ctx) {
-    const runId = parseInt(ctx.params.runId);
+  GET(ctx) {
+    const runId = parseInt(ctx.params.runId, 10);
+    return ctx.state.store.get("controller.runPage").getForRun(runId);
+  },
+});
 
+export class RunPageController {
+  #githubClient: GitHubApiClient;
+  #downloader: TestResultsDownloader;
+
+  constructor(githubClient: GitHubApiClient, downloader: TestResultsDownloader) {
+    this.#githubClient = githubClient;
+    this.#downloader = downloader;
+  }
+
+  async getForRun(runId: number) {
     if (isNaN(runId)) {
       return new Response("Invalid run ID", { status: 400 });
     }
 
-    const githubClient = await ctx.state.store.get("githubClient");
-    const run: WorkflowRun = await githubClient.getWorkflowRun(runId);
-    const downloader = ctx.state.store.get("downloader");
-    const results = await downloader.downloadForRunId(runId);
+    const run = await this.#githubClient.getWorkflowRun(runId);
+    if (run == null) {
+      return new Response(null, {
+        status: 404,
+      })
+    }
 
+    const results = await this.#downloader.downloadForRunId(runId);
     return { data: { runId, run, results } };
-  },
-});
+  }
+}
 
 interface TestStats {
   total: number;

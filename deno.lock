@@ -1,7 +1,7 @@
 {
   "version": "5",
   "specifiers": {
-    "jsr:@david/service-store@0.3": "0.3.0",
+    "jsr:@david/service-store@~0.3.1": "0.3.1",
     "jsr:@deno/esbuild-plugin@^1.2.0": "1.2.1",
     "jsr:@deno/loader@~0.3.10": "0.3.10",
     "jsr:@deno/loader@~0.3.2": "0.3.10",
@@ -52,8 +52,8 @@
     "npm:vite@^7.1.4": "7.3.0_picomatch@4.0.3"
   },
   "jsr": {
-    "@david/service-store@0.3.0": {
-      "integrity": "724cdf4a3ee99e376fb19976fda2c664a0f86e85c6ef9c0ef3fb26afd4f2c0ad"
+    "@david/service-store@0.3.1": {
+      "integrity": "644853b912d281d42f00a1dff0bf1731a9c046d5db5c154350b40bda880bc6fb"
     },
     "@deno/esbuild-plugin@1.2.1": {
       "integrity": "df629467913adc1f960149fdfa3a3430ba8c20381c310fba096db244e6c3c9f6",
@@ -1433,7 +1433,7 @@
   },
   "workspace": {
     "dependencies": [
-      "jsr:@david/service-store@0.3",
+      "jsr:@david/service-store@~0.3.1",
       "jsr:@fresh/core@^2.2.0",
       "jsr:@fresh/plugin-vite@^1.0.8",
       "jsr:@std/cache@~0.2.1",

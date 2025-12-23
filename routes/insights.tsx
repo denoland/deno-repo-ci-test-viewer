@@ -1,17 +1,29 @@
-import { define } from "@/app.ts";
+import { define } from "@/define.ts";
 import type {
   JobTestResults,
   RecordedTestResult,
+  TestResultsDownloader,
 } from "@/lib/test-results-downloader.ts";
-import type { WorkflowRun } from "@/lib/github-api-client.ts";
+import type { GitHubApiClient, WorkflowRun } from "@/lib/github-api-client.ts";
 
 export const handler = define.handlers({
-  async GET(ctx) {
-    const githubClient = await ctx.state.store.get("githubClient");
-    const downloader = ctx.state.store.get("downloader");
+  GET(ctx) {
+    return ctx.state.store.get("controller.insights").get();
+  },
+});
 
+export class InsightsPageController {
+  #githubClient: GitHubApiClient;
+  #downloader: TestResultsDownloader;
+
+  constructor(githubClient: GitHubApiClient, downloader: TestResultsDownloader) {
+    this.#githubClient = githubClient;
+    this.#downloader = downloader;
+  }
+
+  async get() {
     // Fetch the last 100 runs (to ensure we get at least 20 completed main branch runs)
-    const { runs: allRuns } = await githubClient.listWorkflowRuns(100, 1);
+    const { runs: allRuns } = await this.#githubClient.listWorkflowRuns(100, 1);
 
     // Filter to only completed CI runs on main branch
     const mainBranchRuns = allRuns
@@ -32,7 +44,7 @@ export const handler = define.handlers({
 
     for (const run of mainBranchRuns) {
       try {
-        const results = await downloader.downloadForRunId(run.id);
+        const results = await this.#downloader.downloadForRunId(run.id);
         allResults.push({ runId: run.id, run, results });
       } catch (error) {
         console.error(`Failed to download results for run ${run.id}:`, error);
@@ -137,8 +149,9 @@ export const handler = define.handlers({
         newestRun: mainBranchRuns[0],
       },
     };
-  },
-});
+  }
+}
+
 
 export default define.page<typeof handler>(function InsightsPage({ data }) {
   const { flakyTests, failedTests, totalRunsAnalyzed, oldestRun, newestRun } =
