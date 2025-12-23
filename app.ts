@@ -1,5 +1,4 @@
-import { Context, createDefine } from "fresh";
-import { defineStore, type GetStoreKeys, type GetServiceType } from "@david/service-store";
+import { defineStore } from "@david/service-store";
 import {
   TestResultsDownloader,
   TestResultArtifactStore,
@@ -8,7 +7,6 @@ import { RunsFetcher } from "./lib/runs-fetcher.ts";
 import { GitHubApiClient } from "./lib/github-api-client.ts";
 import { App, staticFiles } from "fresh";
 import { ConfigProvider } from "./config.ts";
-import { LoggerFactory } from "./logger.ts";
 import { InsightsPageController } from "./routes/insights.tsx";
 import { HomePageController } from "./routes/index.tsx";
 import { RunPageController } from "./routes/results/[runId].tsx";
@@ -21,9 +19,6 @@ const configProvider = new ConfigProvider();
 
 // services that live for the duration of the application
 const appStore = defineStore()
-  .add("loggerFactory", () => {
-    return new LoggerFactory();
-  })
   .add("testResultArtifactStore", () => {
     return new TestResultArtifactStore();
   })
@@ -43,9 +38,6 @@ export type AppStore = ReturnType<typeof createRequestStore>;
 function createRequestStore() {
   // services that live for the duration of a request
   return appStore.createChild()
-    .add("logger", (store) => {
-      return store.get("loggerFactory").getRequestLogger();
-    })
     .add("runsFetcher", (store) => {
       return new RunsFetcher(store.get("githubClient"));
     })
