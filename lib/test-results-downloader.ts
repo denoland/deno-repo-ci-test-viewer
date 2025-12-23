@@ -1,12 +1,8 @@
-import {
-  BlobReader,
-  BlobWriter,
-  type FileEntry,
-  ZipReader,
-} from "@zip-js/zip-js";
 import { type Artifact, GitHubApiClient } from "./github-api-client.ts";
 import { LruCache } from "@std/cache/lru-cache";
 import { AsyncValue } from "./utils/async-value.ts";
+import type { ExtractInterface } from "./types.ts";
+import type { ArtifactParser } from "./artifact-parser.ts";
 
 const ARTIFACT_PATTERN = /^test-results-.*\.json$/;
 
@@ -30,20 +26,33 @@ interface ParsedTestResultArtifact {
   tests: RecordedTestResult[];
 }
 
-export class TestResultArtifactStore
+export interface TestResultArtifactStore {
+  get(key: string): AsyncValue<ParsedTestResultArtifact> | undefined;
+  set(key: string, value: AsyncValue<ParsedTestResultArtifact>): void;
+}
+
+export class LruTestResultArtifactStore
   extends LruCache<string, AsyncValue<ParsedTestResultArtifact>> {
   constructor() {
     super(100);
   }
 }
 
-export class TestResultsDownloader {
-readonly #store: TestResultArtifactStore;
-  readonly #githubClient: GitHubApiClient;
+export type TestResultsDownloader = ExtractInterface<RealTestResultsDownloader>;
 
-  constructor(store: TestResultArtifactStore, githubClient: GitHubApiClient) {
-    this.#store = store;
+export class RealTestResultsDownloader {
+  readonly #artifactParser: ArtifactParser;
+  readonly #githubClient: Pick<GitHubApiClient, "listArtifacts" | "downloadArtifact">;
+  readonly #store: TestResultArtifactStore;
+
+  constructor(
+    artifactParser: ArtifactParser,
+    githubClient: Pick<GitHubApiClient, "listArtifacts" | "downloadArtifact">,
+    store: TestResultArtifactStore,
+  ) {
+    this.#artifactParser = artifactParser;
     this.#githubClient = githubClient;
+    this.#store = store;
   }
 
   async downloadForRunId(runId: number): Promise<ParsedTestResultArtifact[]> {
@@ -68,38 +77,7 @@ readonly #store: TestResultArtifactStore;
         const blob = await this.#githubClient.downloadArtifact(
           artifact.archive_download_url,
         );
-
-        // Extract the ZIP file using @zip-js/zip-js
-        const zipReader = new ZipReader(new BlobReader(blob));
-        const entries = await zipReader.getEntries();
-
-        // GitHub artifacts should contain a single file with the same name as the artifact
-        // Find the JSON file inside the ZIP
-        const jsonEntry = entries.find((entry) =>
-          !entry.directory &&
-          (entry.filename.endsWith(".json") || entry.filename === artifact.name)
-        ) as FileEntry | undefined;
-
-        if (!jsonEntry) {
-          throw new Error(
-            `No JSON file found in artifact "${artifact.name}"`,
-          );
-        }
-
-        // Extract the file data
-        const blobWriter = new BlobWriter();
-        const fileBlob = await jsonEntry.getData(blobWriter);
-        const fileData = new Uint8Array(await fileBlob.arrayBuffer());
-
-        await zipReader.close();
-
-        const text = new TextDecoder().decode(fileData);
-        const data = JSON.parse(text);
-        return {
-          name: artifact.name.replace(/^test-results-/, "")
-            .replace(/.json$/, ""),
-          tests: data.tests as RecordedTestResult[],
-        };
+        return await this.#artifactParser.parse(artifact.name, blob);
       });
       this.#store.set(artifact.archive_download_url, value);
     }

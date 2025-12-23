@@ -4,7 +4,7 @@ import type {
   RecordedTestResult,
   TestResultsDownloader,
 } from "@/lib/test-results-downloader.ts";
-import type { GitHubApiClient, WorkflowRun } from "@/lib/github-api-client.ts";
+import type { GitHubApiClient, WorkflowRun } from "../lib/github-api-client.ts";
 
 export const handler = define.handlers({
   GET(ctx) {
@@ -16,7 +16,10 @@ export class InsightsPageController {
   #githubClient: GitHubApiClient;
   #downloader: TestResultsDownloader;
 
-  constructor(githubClient: GitHubApiClient, downloader: TestResultsDownloader) {
+  constructor(
+    githubClient: GitHubApiClient,
+    downloader: TestResultsDownloader,
+  ) {
     this.#githubClient = githubClient;
     this.#downloader = downloader;
   }
@@ -152,7 +155,6 @@ export class InsightsPageController {
   }
 }
 
-
 export default define.page<typeof handler>(function InsightsPage({ data }) {
   const { flakyTests, failedTests, totalRunsAnalyzed, oldestRun, newestRun } =
     data;
@@ -162,8 +164,7 @@ export default define.page<typeof handler>(function InsightsPage({ data }) {
       <div class="mb-8">
         <h1 class="text-3xl font-bold mb-2">Test Insights (Main Branch)</h1>
         <p class="text-gray-600 mb-2">
-          Analysis of test behavior across the last {totalRunsAnalyzed}
-          {" "}
+          Analysis of test behavior across the last {totalRunsAnalyzed}{" "}
           completed CI runs on the main branch
         </p>
         {oldestRun && newestRun && (
@@ -171,7 +172,10 @@ export default define.page<typeof handler>(function InsightsPage({ data }) {
             From run #{oldestRun.id} to #{newestRun.id}
           </div>
         )}
-        <a href="/" class="text-blue-600 hover:text-blue-800 text-sm mt-2 inline-block">
+        <a
+          href="/"
+          class="text-blue-600 hover:text-blue-800 text-sm mt-2 inline-block"
+        >
           ← Back to runs list
         </a>
       </div>
@@ -213,13 +217,15 @@ export default define.page<typeof handler>(function InsightsPage({ data }) {
                       )}
                       <div class="flex items-center gap-4 text-xs text-gray-600">
                         <span>
-                          Failed in <span class="font-semibold">
+                          Failed in{" "}
+                          <span class="font-semibold">
                             {test.runIds.length}
                           </span>{" "}
                           of {totalRunsAnalyzed} runs
                         </span>
                         <span>
-                          Failure rate: <span class="font-semibold">
+                          Failure rate:{" "}
+                          <span class="font-semibold">
                             {((test.runIds.length / totalRunsAnalyzed) * 100)
                               .toFixed(1)}%
                           </span>
@@ -278,18 +284,21 @@ export default define.page<typeof handler>(function InsightsPage({ data }) {
                       )}
                       <div class="flex items-center gap-4 text-xs text-gray-600">
                         <span>
-                          Flaked in <span class="font-semibold">
+                          Flaked in{" "}
+                          <span class="font-semibold">
                             {test.occurrences}
                           </span>{" "}
                           of {totalRunsAnalyzed} runs
                         </span>
                         <span>
-                          Total flakes: <span class="font-semibold">
+                          Total flakes:{" "}
+                          <span class="font-semibold">
                             {test.totalFlakyCounts}
                           </span>
                         </span>
                         <span>
-                          Avg flakes per occurrence: <span class="font-semibold">
+                          Avg flakes per occurrence:{" "}
+                          <span class="font-semibold">
                             {test.avgFlakyCount.toFixed(1)}
                           </span>
                         </span>

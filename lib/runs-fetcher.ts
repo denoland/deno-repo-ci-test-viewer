@@ -1,8 +1,11 @@
 import { GitHubApiClient, type WorkflowRun } from "./github-api-client.ts";
+import { ExtractInterface } from "./types.ts";
 
 export type { WorkflowRun };
 
-export class RunsFetcher {
+export type RunsFetcher = ExtractInterface<RealRunsFetcher>;
+
+export class RealRunsFetcher {
   readonly #githubClient: GitHubApiClient;
 
   constructor(githubClient: GitHubApiClient) {

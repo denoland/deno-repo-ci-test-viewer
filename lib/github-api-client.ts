@@ -1,3 +1,6 @@
+import { FileFetcher } from "./file-fetcher.ts";
+import type { ExtractInterface } from "./types.ts";
+
 const OWNER = "denoland";
 const REPO = "deno";
 
@@ -37,10 +40,14 @@ interface ArtifactsListResponse {
   artifacts: Artifact[];
 }
 
-export class GitHubApiClient {
+export type GitHubApiClient = ExtractInterface<RealGitHubApiClient>;
+
+export class RealGitHubApiClient {
+  readonly #fileFetcher: FileFetcher;
   readonly #token: string;
 
-  constructor(token: string) {
+  constructor(fileFetcher: FileFetcher, token: string) {
+    this.#fileFetcher = fileFetcher;
     this.#token = token;
   }
 
@@ -62,9 +69,7 @@ export class GitHubApiClient {
     url.searchParams.set("per_page", perPage.toString());
     url.searchParams.set("page", page.toString());
 
-    const response = await fetch(url, {
-      headers: this.#getHeaders(),
-    });
+    const response = await this.#fileFetcher.get(url, this.#getHeaders());
 
     if (!response.ok) {
       throw new Error(
@@ -80,11 +85,9 @@ export class GitHubApiClient {
   }
 
   async getWorkflowRun(runId: number): Promise<WorkflowRun | undefined> {
-    const response = await fetch(
+    const response = await this.#fileFetcher.get(
       `https://api.github.com/repos/${OWNER}/${REPO}/actions/runs/${runId}`,
-      {
-        headers: this.#getHeaders(),
-      },
+      this.#getHeaders(),
     );
 
     if (response.status === 404) {
@@ -104,9 +107,7 @@ export class GitHubApiClient {
     const url =
       `https://api.github.com/repos/${OWNER}/${REPO}/actions/runs/${runId}/artifacts`;
 
-    const response = await fetch(url, {
-      headers: this.#getHeaders(),
-    });
+    const response = await this.#fileFetcher.get(url, this.#getHeaders());
 
     if (!response.ok) {
       throw new Error(
@@ -119,9 +120,10 @@ export class GitHubApiClient {
   }
 
   async downloadArtifact(archiveDownloadUrl: string): Promise<Blob> {
-    const response = await fetch(archiveDownloadUrl, {
-      headers: this.#getHeaders(),
-    });
+    const response = await this.#fileFetcher.get(
+      archiveDownloadUrl,
+      this.#getHeaders(),
+    );
 
     if (!response.ok) {
       throw new Error(

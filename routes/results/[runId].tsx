@@ -4,7 +4,8 @@ import type {
   RecordedTestResult,
   TestResultsDownloader,
 } from "@/lib/test-results-downloader.ts";
-import { GitHubApiClient } from "@/lib/github-api-client.ts";
+import { GitHubApiClient } from "../../lib/github-api-client.ts";
+import { formatDuration } from "@/render.tsx";
 
 export const handler = define.handlers({
   GET(ctx) {
@@ -17,7 +18,10 @@ export class RunPageController {
   #githubClient: GitHubApiClient;
   #downloader: TestResultsDownloader;
 
-  constructor(githubClient: GitHubApiClient, downloader: TestResultsDownloader) {
+  constructor(
+    githubClient: GitHubApiClient,
+    downloader: TestResultsDownloader,
+  ) {
     this.#githubClient = githubClient;
     this.#downloader = downloader;
   }
@@ -31,7 +35,7 @@ export class RunPageController {
     if (run == null) {
       return new Response(null, {
         status: 404,
-      })
+      });
     }
 
     const results = await this.#downloader.downloadForRunId(runId);
@@ -87,19 +91,6 @@ function calculateStats(results: JobTestResults[]): TestStats {
   });
 
   return stats;
-}
-
-function formatDuration(ms: number): string {
-  if (ms < 1000) {
-    return `${ms.toFixed(0)}ms`;
-  }
-  const seconds = ms / 1000;
-  if (seconds < 60) {
-    return `${seconds.toFixed(2)}s`;
-  }
-  const minutes = Math.floor(seconds / 60);
-  const remainingSeconds = seconds % 60;
-  return `${minutes}m ${remainingSeconds.toFixed(1)}s`;
 }
 
 function TestResultItem(
@@ -305,7 +296,7 @@ export default define.page<typeof handler>(function TestResultsPage({ data }) {
       if (!test.duration || test.duration === 0) return;
 
       // Skip unit tests
-      if ( isUnitTest(test)) {
+      if (isUnitTest(test)) {
         return;
       }
 
@@ -372,7 +363,9 @@ export default define.page<typeof handler>(function TestResultsPage({ data }) {
             </div>
             <div class="ml-3">
               <p class="text-sm text-yellow-800">
-                <span class="font-semibold">Warning:</span> This workflow run hasn't completed yet (Status: {run.status}). Test results may be incomplete.
+                <span class="font-semibold">Warning:</span>{" "}
+                This workflow run hasn't completed yet (Status:{" "}
+                {run.status}). Test results may be incomplete.
               </p>
             </div>
           </div>
@@ -464,5 +457,5 @@ export default define.page<typeof handler>(function TestResultsPage({ data }) {
 });
 
 function isUnitTest(test: RecordedTestResult) {
-        return test.name.startsWith("unit::") || test.name.startsWith("unit_node::")
+  return test.name.startsWith("unit::") || test.name.startsWith("unit_node::");
 }
