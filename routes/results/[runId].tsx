@@ -15,11 +15,11 @@ export const handler = define.handlers({
 });
 
 export class RunPageController {
-  #githubClient: GitHubApiClient;
+  #githubClient: Pick<GitHubApiClient, "getWorkflowRun">;
   #downloader: TestResultsDownloader;
 
   constructor(
-    githubClient: GitHubApiClient,
+    githubClient: Pick<GitHubApiClient, "getWorkflowRun">,
     downloader: TestResultsDownloader,
   ) {
     this.#githubClient = githubClient;
@@ -41,56 +41,6 @@ export class RunPageController {
     const results = await this.#downloader.downloadForRunId(runId);
     return { data: { runId, run, results } };
   }
-}
-
-interface TestStats {
-  total: number;
-  passed: number;
-  failed: number;
-  ignored: number;
-  flaky: number;
-  totalDuration: number;
-}
-
-function calculateStats(results: JobTestResults[]): TestStats {
-  const stats: TestStats = {
-    total: 0,
-    passed: 0,
-    failed: 0,
-    ignored: 0,
-    flaky: 0,
-    totalDuration: 0,
-  };
-
-  function processTest(test: RecordedTestResult) {
-    stats.total++;
-
-    if (test.failed) {
-      stats.failed++;
-    } else if (test.ignored) {
-      stats.ignored++;
-    } else {
-      stats.passed++;
-    }
-
-    if (test.flakyCount && test.flakyCount > 0) {
-      stats.flaky++;
-    }
-
-    if (test.duration) {
-      stats.totalDuration += test.duration;
-    }
-
-    if (test.subTests) {
-      test.subTests.forEach(processTest);
-    }
-  }
-
-  results.forEach((result) => {
-    result.tests.forEach(processTest);
-  });
-
-  return stats;
 }
 
 function TestResultItem(
@@ -136,57 +86,6 @@ function TestResultItem(
         ))}
     </div>
   );
-}
-
-interface JobStats {
-  jobName: string;
-  failed: RecordedTestResult[];
-  flaky: RecordedTestResult[];
-  longest: RecordedTestResult[];
-  totalDuration: number;
-}
-
-function flattenTestsInJob(tests: RecordedTestResult[]): RecordedTestResult[] {
-  const flattened: RecordedTestResult[] = [];
-
-  function flatten(test: RecordedTestResult) {
-    flattened.push(test);
-    if (test.subTests) {
-      test.subTests.forEach(flatten);
-    }
-  }
-
-  tests.forEach(flatten);
-  return flattened;
-}
-
-function getJobStats(job: JobTestResults): JobStats {
-  const allTests = flattenTestsInJob(job.tests);
-
-  const failed = allTests.filter((test) => test.failed);
-  const flaky = allTests.filter(
-    (test) => test.flakyCount && test.flakyCount > 0,
-  );
-
-  // Get top 10 longest tests (only root level tests)
-  const longest = job.tests
-    .filter((test) => test.duration != null && !isUnitTest(test))
-    .sort((a, b) => (b.duration || 0) - (a.duration || 0))
-    .slice(0, 10);
-
-  // Calculate total duration
-  const totalDuration = allTests.reduce(
-    (sum, test) => sum + (test.duration || 0),
-    0,
-  );
-
-  return {
-    jobName: job.name,
-    failed,
-    flaky,
-    longest,
-    totalDuration,
-  };
 }
 
 function JobSection({ job }: { job: JobStats }) {
@@ -258,87 +157,7 @@ function JobSection({ job }: { job: JobStats }) {
 
 export default define.page<typeof handler>(function TestResultsPage({ data }) {
   const { runId, run, results } = data;
-
-  const stats = calculateStats(results);
-  const jobStats = results.map(getJobStats).sort((a, b) =>
-    a.jobName.localeCompare(b.jobName)
-  );
-
-  // Calculate normalized slowest tests across all jobs
-  // Normalize each test's duration relative to its job's median duration
-  interface NormalizedTest {
-    name: string;
-    path: string;
-    normalizedScore: number;
-    avgDuration: number;
-    jobCount: number;
-  }
-
-  const testNormalizedScores = new Map<
-    string,
-    { scores: number[]; durations: number[]; path: string }
-  >();
-
-  results.forEach((jobResult) => {
-    // Flatten all tests in this job to get all durations
-    const allTests = flattenTestsInJob(jobResult.tests);
-    const allDurations = allTests
-      .map((t) => t.duration || 0)
-      .filter((d) => d > 0)
-      .sort((a, b) => a - b);
-
-    const median = allDurations.length > 0
-      ? allDurations[Math.floor(allDurations.length / 2)]
-      : 1;
-
-    // Process all tests from this job
-    allTests.forEach((test) => {
-      if (!test.duration || test.duration === 0) return;
-
-      // Skip unit tests
-      if (isUnitTest(test)) {
-        return;
-      }
-
-      if (!testNormalizedScores.has(test.name)) {
-        testNormalizedScores.set(test.name, {
-          scores: [],
-          durations: [],
-          path: test.path,
-        });
-      }
-      const data = testNormalizedScores.get(test.name)!;
-      // Normalize: how many times slower than the median test in this job?
-      const normalizedScore = (test.duration || 0) / median;
-      data.scores.push(normalizedScore);
-      data.durations.push(test.duration || 0);
-    });
-  });
-
-  // Calculate average normalized score for each test
-  const normalizedTests: NormalizedTest[] = Array.from(
-    testNormalizedScores.entries(),
-  ).map(
-    ([name, data]) => {
-      const avgScore = data.scores.reduce((a, b) => a + b, 0) /
-        data.scores.length;
-      const avgDuration = data.durations.reduce((a, b) => a + b, 0) /
-        data.durations.length;
-
-      return {
-        name,
-        path: data.path,
-        normalizedScore: avgScore,
-        avgDuration,
-        jobCount: data.scores.length,
-      };
-    },
-  );
-
-  // Sort by normalized score (tests that are consistently slow relative to their job)
-  const topAveragedTests = normalizedTests
-    .sort((a, b) => b.normalizedScore - a.normalizedScore)
-    .slice(0, 15);
+  const { stats, jobStats, topAveragedTests } = processTestResults(results);
 
   return (
     <div class="container mx-auto px-4 py-8 max-w-7xl">
@@ -455,6 +274,200 @@ export default define.page<typeof handler>(function TestResultsPage({ data }) {
     </div>
   );
 });
+
+interface NormalizedTest {
+  name: string;
+  path: string;
+  normalizedScore: number;
+  avgDuration: number;
+  jobCount: number;
+}
+
+interface ProcessedPageData {
+  stats: TestStats;
+  jobStats: JobStats[];
+  topAveragedTests: NormalizedTest[];
+}
+
+export function processTestResults(
+  results: JobTestResults[],
+): ProcessedPageData {
+  const stats = calculateStats(results);
+  const jobStats = results.map(getJobStats).sort((a, b) =>
+    a.jobName.localeCompare(b.jobName)
+  );
+
+  // Calculate normalized slowest tests across all jobs
+  // Normalize each test's duration relative to its job's median duration
+  const testNormalizedScores = new Map<
+    string,
+    { scores: number[]; durations: number[]; path: string }
+  >();
+
+  results.forEach((jobResult) => {
+    // Flatten all tests in this job to get all durations
+    const allTests = flattenTestsInJob(jobResult.tests);
+    const allDurations = allTests
+      .map((t) => t.duration || 0)
+      .filter((d) => d > 0)
+      .sort((a, b) => a - b);
+
+    const median = allDurations.length > 0
+      ? allDurations[Math.floor(allDurations.length / 2)]
+      : 1;
+
+    // Process all tests from this job
+    allTests.forEach((test) => {
+      if (!test.duration || test.duration === 0) return;
+
+      // Skip unit tests
+      if (isUnitTest(test)) {
+        return;
+      }
+
+      if (!testNormalizedScores.has(test.name)) {
+        testNormalizedScores.set(test.name, {
+          scores: [],
+          durations: [],
+          path: test.path,
+        });
+      }
+      const data = testNormalizedScores.get(test.name)!;
+      // Normalize: how many times slower than the median test in this job?
+      const normalizedScore = (test.duration || 0) / median;
+      data.scores.push(normalizedScore);
+      data.durations.push(test.duration || 0);
+    });
+  });
+
+  // Calculate average normalized score for each test
+  const normalizedTests: NormalizedTest[] = Array.from(
+    testNormalizedScores.entries(),
+  ).map(
+    ([name, data]) => {
+      const avgScore = data.scores.reduce((a, b) => a + b, 0) /
+        data.scores.length;
+      const avgDuration = data.durations.reduce((a, b) => a + b, 0) /
+        data.durations.length;
+
+      return {
+        name,
+        path: data.path,
+        normalizedScore: avgScore,
+        avgDuration,
+        jobCount: data.scores.length,
+      };
+    },
+  );
+
+  // Sort by normalized score (tests that are consistently slow relative to their job)
+  const topAveragedTests = normalizedTests
+    .sort((a, b) => b.normalizedScore - a.normalizedScore)
+    .slice(0, 15);
+
+  return { stats, jobStats, topAveragedTests };
+}
+
+interface JobStats {
+  jobName: string;
+  failed: RecordedTestResult[];
+  flaky: RecordedTestResult[];
+  longest: RecordedTestResult[];
+  totalDuration: number;
+}
+
+function flattenTestsInJob(tests: RecordedTestResult[]): RecordedTestResult[] {
+  const flattened: RecordedTestResult[] = [];
+
+  function flatten(test: RecordedTestResult) {
+    flattened.push(test);
+    if (test.subTests) {
+      test.subTests.forEach(flatten);
+    }
+  }
+
+  tests.forEach(flatten);
+  return flattened;
+}
+
+function getJobStats(job: JobTestResults): JobStats {
+  const allTests = flattenTestsInJob(job.tests);
+
+  const failed = allTests.filter((test) => test.failed);
+  const flaky = allTests.filter(
+    (test) => test.flakyCount && test.flakyCount > 0,
+  );
+
+  // Get top 10 longest tests (only root level tests)
+  const longest = job.tests
+    .filter((test) => test.duration != null && !isUnitTest(test))
+    .sort((a, b) => (b.duration || 0) - (a.duration || 0))
+    .slice(0, 10);
+
+  // Calculate total duration
+  const totalDuration = allTests.reduce(
+    (sum, test) => sum + (test.duration || 0),
+    0,
+  );
+
+  return {
+    jobName: job.name,
+    failed,
+    flaky,
+    longest,
+    totalDuration,
+  };
+}
+
+interface TestStats {
+  total: number;
+  passed: number;
+  failed: number;
+  ignored: number;
+  flaky: number;
+  totalDuration: number;
+}
+
+function calculateStats(results: JobTestResults[]): TestStats {
+  const stats: TestStats = {
+    total: 0,
+    passed: 0,
+    failed: 0,
+    ignored: 0,
+    flaky: 0,
+    totalDuration: 0,
+  };
+
+  function processTest(test: RecordedTestResult) {
+    stats.total++;
+
+    if (test.failed) {
+      stats.failed++;
+    } else if (test.ignored) {
+      stats.ignored++;
+    } else {
+      stats.passed++;
+    }
+
+    if (test.flakyCount && test.flakyCount > 0) {
+      stats.flaky++;
+    }
+
+    if (test.duration) {
+      stats.totalDuration += test.duration;
+    }
+
+    if (test.subTests) {
+      test.subTests.forEach(processTest);
+    }
+  }
+
+  results.forEach((result) => {
+    result.tests.forEach(processTest);
+  });
+
+  return stats;
+}
 
 function isUnitTest(test: RecordedTestResult) {
   return test.name.startsWith("unit::") || test.name.startsWith("unit_node::");
