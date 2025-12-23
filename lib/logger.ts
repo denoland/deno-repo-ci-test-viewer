@@ -1,4 +1,4 @@
-import type { ExtractInterface } from "./lib/types.ts";
+import type { ExtractInterface } from "./types.ts";
 
 export class LoggerFactory {
   #requestId = 0;

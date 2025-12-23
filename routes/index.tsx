@@ -1,7 +1,7 @@
 import { Head } from "fresh/runtime";
 import { define } from "@/define.ts";
 import type { RunsFetcher } from "@/lib/runs-fetcher.ts";
-import { formatDate, getStatusBadge } from "@/render.tsx";
+import { formatDate, getStatusBadge } from "@/lib/render.tsx";
 
 export const handler = define.handlers({
   GET(ctx) {

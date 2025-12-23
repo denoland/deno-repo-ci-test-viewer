@@ -10,8 +10,8 @@ import {
   type GitHubApiClient,
   RealGitHubApiClient,
 } from "./lib/github-api-client.ts";
-import { ConfigProvider } from "./config.ts";
-import { LoggerFactory } from "./logger.ts";
+import { ConfigProvider } from "./lib/config.ts";
+import { LoggerFactory } from "./lib/logger.ts";
 import { InsightsPageController } from "./routes/insights.tsx";
 import { HomePageController } from "./routes/index.tsx";
 import { RunPageController } from "./routes/results/[runId].tsx";
@@ -20,6 +20,7 @@ import {
   type ArtifactParser,
   ZipArtifactParser,
 } from "./lib/artifact-parser.ts";
+import { App, staticFiles } from "fresh";
 
 export interface AppState {
   store: AppStore;
@@ -28,7 +29,6 @@ export interface AppState {
 export type AppStore = ReturnType<typeof createRequestStore>;
 
 const configProvider = new ConfigProvider();
-
 // services that live for the duration of the application
 const appStore = defineStore()
   .add("loggerFactory", () => {
@@ -58,7 +58,7 @@ const appStore = defineStore()
   })
   .finalize();
 
-export function createRequestStore() {
+function createRequestStore() {
   // services that live for the duration of a request
   return appStore.createChild()
     .add("logger", (store) => {
@@ -85,3 +85,14 @@ export function createRequestStore() {
     })
     .finalize();
 }
+
+export const app = new App<AppState>();
+
+app
+  .use(staticFiles())
+  .use(async (ctx) => {
+    using scopedStore = createRequestStore();
+    ctx.state.store = scopedStore;
+    return await ctx.next();
+  })
+  .fsRoutes();

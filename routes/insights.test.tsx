@@ -5,7 +5,7 @@ import type {
   JobTestResults,
   TestResultsDownloader,
 } from "@/lib/test-results-downloader.ts";
-import { NullLogger } from "@/logger.ts";
+import { NullLogger } from "@/lib/logger.ts";
 
 interface RunsWithCount {
   totalCount: number;
