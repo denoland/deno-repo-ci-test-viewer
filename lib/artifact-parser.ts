@@ -4,7 +4,7 @@ import {
   type FileEntry,
   ZipReader,
 } from "@zip-js/zip-js";
-import { ExtractInterface } from "./types.ts";
+import type { ExtractInterface } from "./types.ts";
 import type { RecordedTestResult } from "./test-results-downloader.ts";
 
 export type ArtifactParser = ExtractInterface<ZipArtifactParser>;

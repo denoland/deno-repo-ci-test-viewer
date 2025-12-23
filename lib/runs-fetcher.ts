@@ -1,5 +1,5 @@
-import { GitHubApiClient, type WorkflowRun } from "./github-api-client.ts";
-import { ExtractInterface } from "./types.ts";
+import type { GitHubApiClient, WorkflowRun } from "./github-api-client.ts";
+import type { ExtractInterface } from "./types.ts";
 
 export type { WorkflowRun };
 
@@ -18,7 +18,7 @@ export class RealRunsFetcher {
   ): Promise<{ runs: WorkflowRun[]; totalCount: number }> {
     const result = await this.#githubClient.listWorkflowRuns(perPage, page);
 
-    // Filter to only "ci" workflow runs
+    // filter to only "ci" workflow runs
     const filteredRuns = result.runs.filter(
       (run) => run.name.toLowerCase() === "ci",
     );

@@ -1,4 +1,4 @@
-import { type Artifact, GitHubApiClient } from "./github-api-client.ts";
+import type { Artifact, GitHubApiClient } from "./github-api-client.ts";
 import { LruCache } from "@std/cache/lru-cache";
 import { AsyncValue } from "./utils/async-value.ts";
 import type { ExtractInterface } from "./types.ts";
@@ -21,7 +21,7 @@ export interface JobTestResults {
   tests: RecordedTestResult[];
 }
 
-interface ParsedTestResultArtifact {
+export interface ParsedTestResultArtifact {
   name: string;
   tests: RecordedTestResult[];
 }

@@ -1,10 +1,11 @@
 import { assertEquals } from "@std/assert";
 import {
-LruTestResultArtifactStore,
+  type ParsedTestResultArtifact,
   RealTestResultsDownloader,
   type RecordedTestResult,
 } from "./test-results-downloader.ts";
 import type { Artifact } from "./github-api-client.ts";
+import type { AsyncValue } from "./utils/async-value.ts";
 
 class MockGitHubApiClient {
   #artifacts: Map<number, Artifact[]> = new Map();
@@ -50,7 +51,7 @@ class MockArtifactParser {
   }
 }
 
-class MockTestResultArtifactStore extends LruTestResultArtifactStore {
+class MockTestResultArtifactStore extends Map<string, AsyncValue<ParsedTestResultArtifact>> {
 }
 
 function createMockArtifact(
@@ -71,7 +72,7 @@ function createMockArtifact(
   };
 }
 
-Deno.test("RealTestResultsDownloader - download test results for run", async () => {
+Deno.test("download test results for run", async () => {
   const mockClient = new MockGitHubApiClient();
   const mockParser = new MockArtifactParser();
   const mockStore = new MockTestResultArtifactStore();
@@ -116,7 +117,7 @@ Deno.test("RealTestResultsDownloader - download test results for run", async () 
   assertEquals(results[1].tests[0].name, "test2");
 });
 
-Deno.test("RealTestResultsDownloader - filter non-matching artifacts", async () => {
+Deno.test("filter non-matching artifacts", async () => {
   const mockClient = new MockGitHubApiClient();
   const mockParser = new MockArtifactParser();
   const mockStore = new MockTestResultArtifactStore();
@@ -152,7 +153,7 @@ Deno.test("RealTestResultsDownloader - filter non-matching artifacts", async () 
   assertEquals(results[0].name, "ci");
 });
 
-Deno.test("RealTestResultsDownloader - cache artifacts by download URL", async () => {
+Deno.test("cache artifacts by download URL", async () => {
   const mockClient = new MockGitHubApiClient();
   const mockParser = new MockArtifactParser();
   const mockStore = new MockTestResultArtifactStore();
@@ -199,7 +200,7 @@ Deno.test("RealTestResultsDownloader - cache artifacts by download URL", async (
   assertEquals(results3[0].name, "cached");
 });
 
-Deno.test("RealTestResultsDownloader - handle empty artifact list", async () => {
+Deno.test("handle empty artifact list", async () => {
   const mockClient = new MockGitHubApiClient();
   const mockParser = new MockArtifactParser();
   const mockStore = new MockTestResultArtifactStore();
@@ -220,7 +221,7 @@ Deno.test("RealTestResultsDownloader - handle empty artifact list", async () => 
   assertEquals(results.length, 0);
 });
 
-Deno.test("RealTestResultsDownloader - handle complex test results", async () => {
+Deno.test("handle complex test results", async () => {
   const mockClient = new MockGitHubApiClient();
   const mockParser = new MockArtifactParser();
   const mockStore = new MockTestResultArtifactStore();
@@ -290,7 +291,7 @@ Deno.test("RealTestResultsDownloader - handle complex test results", async () =>
   assertEquals(results[0].tests[2].ignored, true);
 });
 
-Deno.test("RealTestResultsDownloader - download multiple artifacts in parallel", async () => {
+Deno.test("download multiple artifacts in parallel", async () => {
   const mockClient = new MockGitHubApiClient();
   const mockParser = new MockArtifactParser();
   const mockStore = new MockTestResultArtifactStore();
@@ -334,7 +335,7 @@ Deno.test("RealTestResultsDownloader - download multiple artifacts in parallel",
   assertEquals(duration < 500, true, `Expected parallel execution, took ${duration}ms`);
 });
 
-Deno.test("RealTestResultsDownloader - store is shared across downloads", async () => {
+Deno.test("store is shared across downloads", async () => {
   const mockClient = new MockGitHubApiClient();
   const mockParser = new MockArtifactParser();
   const mockStore = new MockTestResultArtifactStore();

@@ -13,11 +13,11 @@ export const handler = define.handlers({
 });
 
 export class InsightsPageController {
-  #githubClient: GitHubApiClient;
+  #githubClient: Pick<GitHubApiClient, "listWorkflowRuns">;
   #downloader: TestResultsDownloader;
 
   constructor(
-    githubClient: GitHubApiClient,
+    githubClient: Pick<GitHubApiClient, "listWorkflowRuns">,
     downloader: TestResultsDownloader,
   ) {
     this.#githubClient = githubClient;

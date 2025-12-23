@@ -2,12 +2,12 @@ import { defineStore } from "@david/service-store";
 import {
   LruTestResultArtifactStore,
   RealTestResultsDownloader,
-  TestResultArtifactStore,
-  TestResultsDownloader,
+  type TestResultArtifactStore,
+  type TestResultsDownloader,
 } from "./lib/test-results-downloader.ts";
-import { RealRunsFetcher, RunsFetcher } from "./lib/runs-fetcher.ts";
+import { RealRunsFetcher, type RunsFetcher } from "./lib/runs-fetcher.ts";
 import {
-  GitHubApiClient,
+  type GitHubApiClient,
   RealGitHubApiClient,
 } from "./lib/github-api-client.ts";
 import { App, staticFiles } from "fresh";
@@ -15,8 +15,8 @@ import { ConfigProvider } from "./config.ts";
 import { InsightsPageController } from "./routes/insights.tsx";
 import { HomePageController } from "./routes/index.tsx";
 import { RunPageController } from "./routes/results/[runId].tsx";
-import { FileFetcher, RealFileFetcher } from "./lib/file-fetcher.ts";
-import { ArtifactParser, ZipArtifactParser } from "./lib/artifact-parser.ts";
+import { type FileFetcher, RealFileFetcher } from "./lib/file-fetcher.ts";
+import { type ArtifactParser, ZipArtifactParser } from "./lib/artifact-parser.ts";
 
 export interface AppState {
   store: AppStore;

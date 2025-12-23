@@ -33,7 +33,7 @@ function createMockResponse(
   });
 }
 
-Deno.test("RealGitHubApiClient - listWorkflowRuns success", async () => {
+Deno.test("listWorkflowRuns success", async () => {
   const mockFetcher = new MockFileFetcher();
   const client = new RealGitHubApiClient(mockFetcher, "test-token");
 
@@ -69,7 +69,7 @@ Deno.test("RealGitHubApiClient - listWorkflowRuns success", async () => {
   assertEquals(result.runs[0].name, "CI");
 });
 
-Deno.test("RealGitHubApiClient - listWorkflowRuns with custom pagination", async () => {
+Deno.test("listWorkflowRuns with custom pagination", async () => {
   const mockFetcher = new MockFileFetcher();
   const client = new RealGitHubApiClient(mockFetcher, "test-token");
 
@@ -89,7 +89,7 @@ Deno.test("RealGitHubApiClient - listWorkflowRuns with custom pagination", async
   assertEquals(result.runs.length, 0);
 });
 
-Deno.test("RealGitHubApiClient - listWorkflowRuns failure", async () => {
+Deno.test("listWorkflowRuns failure", async () => {
   const mockFetcher = new MockFileFetcher();
   const client = new RealGitHubApiClient(mockFetcher, "test-token");
 
@@ -105,7 +105,7 @@ Deno.test("RealGitHubApiClient - listWorkflowRuns failure", async () => {
   );
 });
 
-Deno.test("RealGitHubApiClient - getWorkflowRun success", async () => {
+Deno.test("getWorkflowRun success", async () => {
   const mockFetcher = new MockFileFetcher();
   const client = new RealGitHubApiClient(mockFetcher, "test-token");
 
@@ -133,7 +133,7 @@ Deno.test("RealGitHubApiClient - getWorkflowRun success", async () => {
   assertEquals(result, mockRun);
 });
 
-Deno.test("RealGitHubApiClient - getWorkflowRun not found", async () => {
+Deno.test("getWorkflowRun not found", async () => {
   const mockFetcher = new MockFileFetcher();
   const client = new RealGitHubApiClient(mockFetcher, "test-token");
 
@@ -147,7 +147,7 @@ Deno.test("RealGitHubApiClient - getWorkflowRun not found", async () => {
   assertEquals(result, undefined);
 });
 
-Deno.test("RealGitHubApiClient - getWorkflowRun failure", async () => {
+Deno.test("getWorkflowRun failure", async () => {
   const mockFetcher = new MockFileFetcher();
   const client = new RealGitHubApiClient(mockFetcher, "test-token");
 
@@ -163,7 +163,7 @@ Deno.test("RealGitHubApiClient - getWorkflowRun failure", async () => {
   );
 });
 
-Deno.test("RealGitHubApiClient - listArtifacts success", async () => {
+Deno.test("listArtifacts success", async () => {
   const mockFetcher = new MockFileFetcher();
   const client = new RealGitHubApiClient(mockFetcher, "test-token");
 
@@ -207,7 +207,7 @@ Deno.test("RealGitHubApiClient - listArtifacts success", async () => {
   assertEquals(result[1].name, "coverage");
 });
 
-Deno.test("RealGitHubApiClient - listArtifacts failure", async () => {
+Deno.test("listArtifacts failure", async () => {
   const mockFetcher = new MockFileFetcher();
   const client = new RealGitHubApiClient(mockFetcher, "test-token");
 
@@ -223,7 +223,7 @@ Deno.test("RealGitHubApiClient - listArtifacts failure", async () => {
   );
 });
 
-Deno.test("RealGitHubApiClient - downloadArtifact success", async () => {
+Deno.test("downloadArtifact success", async () => {
   const mockFetcher = new MockFileFetcher();
   const client = new RealGitHubApiClient(mockFetcher, "test-token");
 
@@ -242,7 +242,7 @@ Deno.test("RealGitHubApiClient - downloadArtifact success", async () => {
   assertEquals(text, "fake zip content");
 });
 
-Deno.test("RealGitHubApiClient - downloadArtifact failure", async () => {
+Deno.test("downloadArtifact failure", async () => {
   const mockFetcher = new MockFileFetcher();
   const client = new RealGitHubApiClient(mockFetcher, "test-token");
 

@@ -1,4 +1,4 @@
-import { FileFetcher } from "./file-fetcher.ts";
+import type { FileFetcher } from "./file-fetcher.ts";
 import type { ExtractInterface } from "./types.ts";
 
 const OWNER = "denoland";

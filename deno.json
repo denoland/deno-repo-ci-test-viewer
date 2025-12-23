@@ -7,11 +7,19 @@
     "start": "deno serve -A _fresh/server.js",
     "update": "deno run -A -r jsr:@fresh/update ."
   },
+  "test": {
+    "permissions": {
+      "env": true
+    }
+  },
   "lint": {
     "rules": {
       "tags": [
         "fresh",
         "recommended"
+      ],
+      "include": [
+        "verbatim-module-syntax"
       ]
     }
   },

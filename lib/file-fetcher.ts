@@ -1,4 +1,4 @@
-import { ExtractInterface } from "./types.ts";
+import type { ExtractInterface } from "./types.ts";
 
 export type FileFetcher = ExtractInterface<RealFileFetcher>;
 
