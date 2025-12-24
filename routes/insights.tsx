@@ -1,6 +1,5 @@
 import { define } from "@/define.ts";
 import type {
-  JobTestResults,
   RecordedTestResult,
   TestResultsDownloader,
 } from "@/lib/test-results-downloader.ts";
@@ -43,7 +42,7 @@ export class InsightsPageController {
       .slice(0, 20);
 
     // Download test results for all runs
-    const allResults = (await Promise.all(mainBranchRuns.map(async run => {
+    const allResults = (await Promise.all(mainBranchRuns.map(async (run) => {
       try {
         const results = await this.#downloader.downloadForRunId(run.id);
         return { runId: run.id, run, results };
@@ -54,7 +53,7 @@ export class InsightsPageController {
         );
         return undefined!;
       }
-    }))).filter(r => r != null);
+    }))).filter((r) => r != null);
 
     // Analyze flaky tests across all runs
     const flakyTestsMap = new Map<
