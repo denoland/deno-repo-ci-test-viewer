@@ -93,7 +93,9 @@ export class InsightsPageController {
         if (existing) {
           existing.totalFlakyCounts += test.flakyCount;
           existing.occurrences++;
-          existing.runIds.push(runId);
+          if (!existing.runIds.includes(runId)) {
+            existing.runIds.push(runId);
+          }
           existing.avgFlakyCount = existing.totalFlakyCounts /
             existing.occurrences;
           existing.jobCounts.set(
@@ -307,7 +309,7 @@ export default define.page<typeof handler>(function InsightsPage({ data }) {
                         <span>
                           Flaked in{" "}
                           <span class="font-semibold">
-                            {test.occurrences}
+                            {test.runIds.length}
                           </span>{" "}
                           of {totalRunsAnalyzed} runs
                         </span>
