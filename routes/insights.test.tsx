@@ -172,6 +172,82 @@ Deno.test("tracks flaky tests", async () => {
   assertEquals(result.data.flakyTests[0].occurrences, 2);
   assertEquals(result.data.flakyTests[0].avgFlakyCount, 2.5);
   assertEquals(result.data.flakyTests[0].runIds, [1, 2]);
+  assertEquals(result.data.flakyTests[0].jobCounts, [{
+    name: "test-job",
+    count: 5,
+  }]);
+});
+
+Deno.test("tracks job counts for flaky tests", async () => {
+  const mockGithub = new MockGitHubApiClient();
+  const mockDownloader = new MockTestResultsDownloader();
+
+  const runs = [
+    createMockRun(1, "CI", "completed", "main"),
+    createMockRun(2, "CI", "completed", "main"),
+  ];
+
+  mockGithub.mockRuns({ totalCount: 2, runs });
+
+  mockDownloader.mockResults(1, [
+    {
+      name: "linux-x64",
+      tests: [
+        {
+          name: "test1",
+          path: "file1.test.ts",
+          flakyCount: 1,
+          subTests: [],
+        },
+      ],
+    },
+    {
+      name: "windows-x64",
+      tests: [
+        {
+          name: "test1",
+          path: "file1.test.ts",
+          flakyCount: 2,
+          subTests: [],
+        },
+      ],
+    },
+  ]);
+
+  mockDownloader.mockResults(2, [
+    {
+      name: "linux-x64",
+      tests: [
+        {
+          name: "test1",
+          path: "file1.test.ts",
+          flakyCount: 1,
+          subTests: [],
+        },
+      ],
+    },
+  ]);
+
+  const controller = new InsightsPageController(
+    new NullLogger(),
+    mockGithub,
+    mockDownloader,
+  );
+  const result = await controller.get();
+
+  assertEquals(result.data.flakyTests.length, 1);
+  assertEquals(result.data.flakyTests[0].name, "test1");
+  assertEquals(result.data.flakyTests[0].totalFlakyCounts, 4);
+  assertEquals(result.data.flakyTests[0].occurrences, 3);
+  assertEquals(result.data.flakyTests[0].jobCounts.length, 2);
+
+  // Check job counts (order might vary)
+  const jobCounts = result.data.flakyTests[0].jobCounts;
+  const linuxJob = jobCounts.find((j) => j.name === "linux-x64");
+  const windowsJob = jobCounts.find((j) => j.name === "windows-x64");
+
+  assertEquals(linuxJob?.count, 2);
+  assertEquals(windowsJob?.count, 2);
 });
 
 Deno.test("tracks failed tests", async () => {

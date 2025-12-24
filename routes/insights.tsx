@@ -65,6 +65,7 @@ export class InsightsPageController {
         occurrences: number;
         avgFlakyCount: number;
         runIds: number[];
+        jobCounts: Map<string, number>;
       }
     >();
 
@@ -79,7 +80,11 @@ export class InsightsPageController {
       }
     >();
 
-    function processTest(test: RecordedTestResult, runId: number) {
+    function processTest(
+      test: RecordedTestResult,
+      runId: number,
+      jobName: string,
+    ) {
       // Track flaky tests
       if (test.flakyCount && test.flakyCount > 0) {
         const key = `${test.path}::${test.name}`;
@@ -91,6 +96,10 @@ export class InsightsPageController {
           existing.runIds.push(runId);
           existing.avgFlakyCount = existing.totalFlakyCounts /
             existing.occurrences;
+          existing.jobCounts.set(
+            jobName,
+            (existing.jobCounts.get(jobName) || 0) + test.flakyCount,
+          );
         } else {
           flakyTestsMap.set(key, {
             name: test.name,
@@ -99,6 +108,7 @@ export class InsightsPageController {
             occurrences: 1,
             avgFlakyCount: test.flakyCount,
             runIds: [runId],
+            jobCounts: new Map([[jobName, test.flakyCount]]),
           });
         }
       }
@@ -124,18 +134,28 @@ export class InsightsPageController {
       }
 
       if (test.subTests) {
-        test.subTests.forEach((subTest) => processTest(subTest, runId));
+        test.subTests.forEach((subTest) =>
+          processTest(subTest, runId, jobName)
+        );
       }
     }
 
     allResults.forEach(({ runId, results }) => {
       results.forEach((jobResult) => {
-        jobResult.tests.forEach((test) => processTest(test, runId));
+        jobResult.tests.forEach((test) =>
+          processTest(test, runId, jobResult.name)
+        );
       });
     });
 
     // Convert to array and sort by total flaky counts
-    const flakyTests = Array.from(flakyTestsMap.values()).sort(
+    const flakyTests = Array.from(flakyTestsMap.values()).map((test) => ({
+      ...test,
+      jobCounts: Array.from(test.jobCounts.entries()).map(([name, count]) => ({
+        name,
+        count,
+      })),
+    })).sort(
       (a, b) => b.totalFlakyCounts - a.totalFlakyCounts,
     );
 
@@ -304,6 +324,19 @@ export default define.page<typeof handler>(function InsightsPage({ data }) {
                           </span>
                         </span>
                       </div>
+                      {test.jobCounts.length > 0 && (
+                        <div class="mt-2 text-xs text-gray-600">
+                          <span class="font-semibold">Jobs:</span>{" "}
+                          {test.jobCounts
+                            .sort((a, b) => b.count - a.count)
+                            .map((job, i) => (
+                              <span key={i}>
+                                {i > 0 && ", "}
+                                {job.name} ({job.count})
+                              </span>
+                            ))}
+                        </div>
+                      )}
                     </div>
                     <div class="flex-shrink-0">
                       <div class="bg-yellow-100 text-yellow-800 px-3 py-2 rounded text-center">
