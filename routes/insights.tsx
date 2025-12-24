@@ -43,23 +43,18 @@ export class InsightsPageController {
       .slice(0, 20);
 
     // Download test results for all runs
-    const allResults: Array<{
-      runId: number;
-      run: WorkflowRun;
-      results: JobTestResults[];
-    }> = [];
-
-    for (const run of mainBranchRuns) {
+    const allResults = (await Promise.all(mainBranchRuns.map(async run => {
       try {
         const results = await this.#downloader.downloadForRunId(run.id);
-        allResults.push({ runId: run.id, run, results });
+        return { runId: run.id, run, results };
       } catch (error) {
         this.#logger.logError(
           `Failed to download results for run ${run.id}:`,
           error,
         );
+        return undefined!;
       }
-    }
+    }))).filter(r => r != null);
 
     // Analyze flaky tests across all runs
     const flakyTestsMap = new Map<

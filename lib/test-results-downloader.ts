@@ -34,7 +34,7 @@ export interface TestResultArtifactStore {
 export class LruTestResultArtifactStore
   extends LruCache<string, AsyncValue<ParsedTestResultArtifact>> {
   constructor() {
-    super(100);
+    super(200);
   }
 }
 
