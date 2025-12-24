@@ -80,6 +80,9 @@ export class InsightsPageController {
       }
     >();
 
+    // Track flaky test counts per job
+    const jobFlakyCountsMap = new Map<string, number>();
+
     function processTest(
       test: RecordedTestResult,
       runId: number,
@@ -113,6 +116,12 @@ export class InsightsPageController {
             jobCounts: new Map([[jobName, test.flakyCount]]),
           });
         }
+
+        // Track flaky counts per job
+        jobFlakyCountsMap.set(
+          jobName,
+          (jobFlakyCountsMap.get(jobName) || 0) + test.flakyCount,
+        );
       }
 
       // Track failed tests
@@ -166,10 +175,16 @@ export class InsightsPageController {
       (a, b) => b.failureCount - a.failureCount,
     );
 
+    // Convert job flaky counts to array and sort
+    const flakyJobs = Array.from(jobFlakyCountsMap.entries())
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count);
+
     return {
       data: {
         flakyTests,
         failedTests,
+        flakyJobs,
         totalRunsAnalyzed: mainBranchRuns.length,
         oldestRun: mainBranchRuns[mainBranchRuns.length - 1],
         newestRun: mainBranchRuns[0],
@@ -179,8 +194,14 @@ export class InsightsPageController {
 }
 
 export default define.page<typeof handler>(function InsightsPage({ data }) {
-  const { flakyTests, failedTests, totalRunsAnalyzed, oldestRun, newestRun } =
-    data;
+  const {
+    flakyTests,
+    failedTests,
+    flakyJobs,
+    totalRunsAnalyzed,
+    oldestRun,
+    newestRun,
+  } = data;
 
   return (
     <div class="container mx-auto px-4 py-8 max-w-7xl">
@@ -270,7 +291,7 @@ export default define.page<typeof handler>(function InsightsPage({ data }) {
           )}
       </div>
 
-      <div class="bg-white rounded-lg shadow">
+      <div class="bg-white rounded-lg shadow mb-6">
         <div class="bg-yellow-100 px-4 py-3 rounded-t-lg border-b border-yellow-300">
           <div class="flex items-center justify-between">
             <h2 class="font-semibold text-xl">
@@ -346,6 +367,52 @@ export default define.page<typeof handler>(function InsightsPage({ data }) {
                           {test.totalFlakyCounts}
                         </div>
                         <div class="text-xs">total flakes</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+      </div>
+
+      <div class="bg-white rounded-lg shadow">
+        <div class="bg-purple-100 px-4 py-3 rounded-t-lg border-b border-purple-300">
+          <div class="flex items-center justify-between">
+            <h2 class="font-semibold text-xl">
+              🔧 Most Flaky Jobs ({flakyJobs.length})
+            </h2>
+          </div>
+        </div>
+        {flakyJobs.length === 0
+          ? (
+            <div class="p-8 text-center">
+              <div class="text-6xl mb-4">🎉</div>
+              <h3 class="text-xl font-bold mb-2">No Flaky Jobs!</h3>
+              <p class="text-gray-600">
+                No jobs had flaky tests across the analyzed runs.
+              </p>
+            </div>
+          )
+          : (
+            <div class="divide-y divide-gray-200">
+              {flakyJobs.map((job, idx) => (
+                <div
+                  key={idx}
+                  class="px-4 py-3 hover:bg-gray-50 transition-colors"
+                >
+                  <div class="flex items-center justify-between gap-4">
+                    <div class="flex-1 min-w-0">
+                      <div class="font-mono text-sm font-semibold text-gray-900">
+                        {job.name}
+                      </div>
+                    </div>
+                    <div class="flex-shrink-0">
+                      <div class="bg-purple-100 text-purple-800 px-3 py-2 rounded text-center">
+                        <div class="text-2xl font-bold">
+                          {job.count}
+                        </div>
+                        <div class="text-xs">flaky tests</div>
                       </div>
                     </div>
                   </div>

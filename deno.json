@@ -4,12 +4,20 @@
     "check": "deno fmt --check . && deno lint . && deno check",
     "dev": "vite",
     "build": "vite build",
-    "start": "deno serve -A _fresh/server.js",
+    // todo(https://github.com/denoland/deno/pull/31718): remove this --allow-net
+    "start": "deno serve -P --allow-net _fresh/server.js",
     "update": "deno run -A -r jsr:@fresh/update ."
   },
   "test": {
     "permissions": {
       "env": true
+    }
+  },
+  "permissions": {
+    "default": {
+      "env": true,
+      "read": ["_fresh"],
+      "net": ["*.github.com", "*.windows.net"]
     }
   },
   "lint": {

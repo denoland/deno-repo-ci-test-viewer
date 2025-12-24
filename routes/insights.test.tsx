@@ -523,3 +523,104 @@ Deno.test("returns empty lists when no issues found", async () => {
   assertEquals(result.data.failedTests.length, 0);
   assertEquals(result.data.totalRunsAnalyzed, 1);
 });
+
+Deno.test("tracks flaky job counts", async () => {
+  const mockGithub = new MockGitHubApiClient();
+  const mockDownloader = new MockTestResultsDownloader();
+
+  const runs = [
+    createMockRun(1, "CI", "completed", "main"),
+    createMockRun(2, "CI", "completed", "main"),
+  ];
+
+  mockGithub.mockRuns({ totalCount: 2, runs });
+
+  mockDownloader.mockResults(1, [
+    {
+      name: "linux-x64",
+      tests: [
+        {
+          name: "test1",
+          path: "file1.test.ts",
+          flakyCount: 2,
+          subTests: [],
+        },
+        {
+          name: "test2",
+          path: "file2.test.ts",
+          flakyCount: 3,
+          subTests: [],
+        },
+      ],
+    },
+    {
+      name: "windows-x64",
+      tests: [
+        {
+          name: "test1",
+          path: "file1.test.ts",
+          flakyCount: 1,
+          subTests: [],
+        },
+      ],
+    },
+    {
+      name: "macos-arm64",
+      tests: [
+        {
+          name: "test3",
+          path: "file3.test.ts",
+          flakyCount: 4,
+          subTests: [],
+        },
+      ],
+    },
+  ]);
+
+  mockDownloader.mockResults(2, [
+    {
+      name: "linux-x64",
+      tests: [
+        {
+          name: "test1",
+          path: "file1.test.ts",
+          flakyCount: 1,
+          subTests: [],
+        },
+      ],
+    },
+    {
+      name: "windows-x64",
+      tests: [
+        {
+          name: "test2",
+          path: "file2.test.ts",
+          flakyCount: 2,
+          subTests: [],
+        },
+      ],
+    },
+  ]);
+
+  const controller = new InsightsPageController(
+    new NullLogger(),
+    mockGithub,
+    mockDownloader,
+  );
+  const result = await controller.get();
+
+  // Verify flakyJobs is returned and sorted by count descending
+  assertEquals(result.data.flakyJobs.length, 3);
+
+  // linux-x64: 2 + 3 + 1 = 6 total flakes
+  assertEquals(result.data.flakyJobs[0].name, "linux-x64");
+  assertEquals(result.data.flakyJobs[0].count, 6);
+
+  // macos-arm64: 4 total flakes
+  assertEquals(result.data.flakyJobs[1].name, "macos-arm64");
+  assertEquals(result.data.flakyJobs[1].count, 4);
+
+  // windows-x64: 1 + 2 = 3 total flakes
+  assertEquals(result.data.flakyJobs[2].name, "windows-x64");
+  assertEquals(result.data.flakyJobs[2].count, 3);
+});
