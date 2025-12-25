@@ -28,12 +28,10 @@ export interface AppState {
 
 export type AppStore = ReturnType<typeof createRequestStore>;
 
-const configProvider = new ConfigProvider();
 // services that live for the duration of the application
 const appStore = defineStore()
-  .add("loggerFactory", () => {
-    return new LoggerFactory();
-  })
+  .add("config", () => new ConfigProvider())
+  .add("loggerFactory", () => new LoggerFactory())
   .add("artifactParser", (): ArtifactParser => {
     return new ZipArtifactParser();
   })
@@ -46,7 +44,7 @@ const appStore = defineStore()
   .add("githubClient", (store): GitHubApiClient => {
     return new RealGitHubApiClient(
       store.get("fileFetcher"),
-      configProvider.githubToken,
+      store.get("config").githubToken,
     );
   })
   .add("testResultsDownloader", (store): TestResultsDownloader => {

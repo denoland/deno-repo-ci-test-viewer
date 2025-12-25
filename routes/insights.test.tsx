@@ -1,6 +1,10 @@
 import { assertEquals } from "@std/assert";
 import { InsightsPageController } from "./insights.tsx";
-import type { GitHubApiClient, WorkflowRun } from "@/lib/github-api-client.ts";
+import type {
+  GitHubApiClient,
+  WorkflowJob,
+  WorkflowRun,
+} from "@/lib/github-api-client.ts";
 import type {
   JobTestResults,
   TestResultsDownloader,
@@ -12,11 +16,17 @@ interface RunsWithCount {
   runs: WorkflowRun[];
 }
 
-class MockGitHubApiClient implements Pick<GitHubApiClient, "listWorkflowRuns"> {
+class MockGitHubApiClient
+  implements Pick<GitHubApiClient, "listWorkflowRuns" | "listJobs"> {
   #runs: RunsWithCount = { totalCount: 0, runs: [] };
+  #jobs: Map<number, WorkflowJob[]> = new Map();
 
   mockRuns(runs: RunsWithCount) {
     this.#runs = runs;
+  }
+
+  mockJobs(runId: number, jobs: WorkflowJob[]) {
+    this.#jobs.set(runId, jobs);
   }
 
   listWorkflowRuns(
@@ -24,6 +34,10 @@ class MockGitHubApiClient implements Pick<GitHubApiClient, "listWorkflowRuns"> {
     _page?: number,
   ) {
     return Promise.resolve(this.#runs);
+  }
+
+  listJobs(runId: number) {
+    return Promise.resolve(this.#jobs.get(runId) || []);
   }
 }
 
@@ -77,6 +91,8 @@ Deno.test("filters main branch completed CI runs", async () => {
   ];
 
   mockGithub.mockRuns({ totalCount: 5, runs });
+  mockGithub.mockJobs(1, []);
+  mockGithub.mockJobs(5, []);
   mockDownloader.mockResults(1, []);
   mockDownloader.mockResults(5, []);
 
@@ -106,6 +122,7 @@ Deno.test("limits to 20 main branch runs", async () => {
 
   // Mock results for first 20 runs only
   for (let i = 1; i <= 20; i++) {
+    mockGithub.mockJobs(i, []);
     mockDownloader.mockResults(i, []);
   }
 
@@ -129,6 +146,8 @@ Deno.test("tracks flaky tests", async () => {
   ];
 
   mockGithub.mockRuns({ totalCount: 2, runs });
+  mockGithub.mockJobs(1, []);
+  mockGithub.mockJobs(2, []);
 
   mockDownloader.mockResults(1, [
     {
@@ -534,6 +553,8 @@ Deno.test("tracks flaky job counts", async () => {
   ];
 
   mockGithub.mockRuns({ totalCount: 2, runs });
+  mockGithub.mockJobs(1, []);
+  mockGithub.mockJobs(2, []);
 
   mockDownloader.mockResults(1, [
     {
@@ -623,4 +644,211 @@ Deno.test("tracks flaky job counts", async () => {
   // windows-x64: 1 + 2 = 3 total flakes
   assertEquals(result.data.flakyJobs[2].name, "windows-x64");
   assertEquals(result.data.flakyJobs[2].count, 3);
+});
+
+Deno.test("tracks job performance metrics", async () => {
+  const mockGithub = new MockGitHubApiClient();
+  const mockDownloader = new MockTestResultsDownloader();
+
+  const runs = [
+    createMockRun(1, "CI", "completed", "main"),
+    createMockRun(2, "CI", "completed", "main"),
+  ];
+
+  mockGithub.mockRuns({ totalCount: 2, runs });
+
+  // Mock jobs with timing data for run 1
+  mockGithub.mockJobs(1, [
+    {
+      id: 101,
+      run_id: 1,
+      name: "test-linux",
+      status: "completed",
+      conclusion: "success",
+      started_at: "2024-01-01T10:00:00Z",
+      completed_at: "2024-01-01T10:05:00Z", // 5 minutes = 300 seconds
+    },
+    {
+      id: 102,
+      run_id: 1,
+      name: "test-windows",
+      status: "completed",
+      conclusion: "success",
+      started_at: "2024-01-01T10:00:00Z",
+      completed_at: "2024-01-01T10:10:00Z", // 10 minutes = 600 seconds
+    },
+  ]);
+
+  // Mock jobs with timing data for run 2
+  mockGithub.mockJobs(2, [
+    {
+      id: 201,
+      run_id: 2,
+      name: "test-linux",
+      status: "completed",
+      conclusion: "success",
+      started_at: "2024-01-02T10:00:00Z",
+      completed_at: "2024-01-02T10:07:00Z", // 7 minutes = 420 seconds
+    },
+    {
+      id: 202,
+      run_id: 2,
+      name: "test-windows",
+      status: "completed",
+      conclusion: "success",
+      started_at: "2024-01-02T10:00:00Z",
+      completed_at: "2024-01-02T10:08:00Z", // 8 minutes = 480 seconds
+    },
+  ]);
+
+  mockDownloader.mockResults(1, []);
+  mockDownloader.mockResults(2, []);
+
+  const controller = new InsightsPageController(
+    new NullLogger(),
+    mockGithub,
+    mockDownloader,
+  );
+  const result = await controller.get();
+
+  // Verify jobPerformance is returned and sorted by average duration descending
+  assertEquals(result.data.jobPerformance.length, 2);
+
+  // test-windows: avg=(600+480)/2=540s, min=480s, max=600s
+  assertEquals(result.data.jobPerformance[0].name, "test-windows");
+  assertEquals(result.data.jobPerformance[0].avgDuration, 540);
+  assertEquals(result.data.jobPerformance[0].minDuration, 480);
+  assertEquals(result.data.jobPerformance[0].maxDuration, 600);
+  assertEquals(result.data.jobPerformance[0].count, 2);
+
+  // test-linux: avg=(300+420)/2=360s, min=300s, max=420s
+  assertEquals(result.data.jobPerformance[1].name, "test-linux");
+  assertEquals(result.data.jobPerformance[1].avgDuration, 360);
+  assertEquals(result.data.jobPerformance[1].minDuration, 300);
+  assertEquals(result.data.jobPerformance[1].maxDuration, 420);
+  assertEquals(result.data.jobPerformance[1].count, 2);
+});
+
+Deno.test("tracks step performance metrics", async () => {
+  const mockGithub = new MockGitHubApiClient();
+  const mockDownloader = new MockTestResultsDownloader();
+
+  const runs = [
+    createMockRun(1, "CI", "completed", "main"),
+    createMockRun(2, "CI", "completed", "main"),
+  ];
+
+  mockGithub.mockRuns({ totalCount: 2, runs });
+
+  // Mock jobs with step timing data for run 1
+  mockGithub.mockJobs(1, [
+    {
+      id: 101,
+      run_id: 1,
+      name: "test-job",
+      status: "completed",
+      conclusion: "success",
+      started_at: "2024-01-01T10:00:00Z",
+      completed_at: "2024-01-01T10:10:00Z",
+      steps: [
+        {
+          name: "Checkout code",
+          status: "completed",
+          conclusion: "success",
+          number: 1,
+          started_at: "2024-01-01T10:00:00Z",
+          completed_at: "2024-01-01T10:00:30Z", // 30 seconds
+        },
+        {
+          name: "Run tests",
+          status: "completed",
+          conclusion: "success",
+          number: 2,
+          started_at: "2024-01-01T10:00:30Z",
+          completed_at: "2024-01-01T10:05:30Z", // 5 minutes = 300 seconds
+        },
+        {
+          name: "Upload results",
+          status: "completed",
+          conclusion: "success",
+          number: 3,
+          started_at: "2024-01-01T10:05:30Z",
+          completed_at: "2024-01-01T10:06:00Z", // 30 seconds
+        },
+      ],
+    },
+  ]);
+
+  // Mock jobs with step timing data for run 2
+  mockGithub.mockJobs(2, [
+    {
+      id: 201,
+      run_id: 2,
+      name: "test-job",
+      status: "completed",
+      conclusion: "success",
+      started_at: "2024-01-02T10:00:00Z",
+      completed_at: "2024-01-02T10:08:00Z",
+      steps: [
+        {
+          name: "Checkout code",
+          status: "completed",
+          conclusion: "success",
+          number: 1,
+          started_at: "2024-01-02T10:00:00Z",
+          completed_at: "2024-01-02T10:00:20Z", // 20 seconds
+        },
+        {
+          name: "Run tests",
+          status: "completed",
+          conclusion: "success",
+          number: 2,
+          started_at: "2024-01-02T10:00:20Z",
+          completed_at: "2024-01-02T10:04:20Z", // 4 minutes = 240 seconds
+        },
+        {
+          name: "Upload results",
+          status: "completed",
+          conclusion: "success",
+          number: 3,
+          started_at: "2024-01-02T10:04:20Z",
+          completed_at: "2024-01-02T10:05:00Z", // 40 seconds
+        },
+      ],
+    },
+  ]);
+
+  mockDownloader.mockResults(1, []);
+  mockDownloader.mockResults(2, []);
+
+  const controller = new InsightsPageController(
+    new NullLogger(),
+    mockGithub,
+    mockDownloader,
+  );
+  const result = await controller.get();
+
+  // Verify stepPerformance is returned and sorted by average duration descending
+  assertEquals(result.data.stepPerformance.length, 3);
+
+  // Run tests: avg=(300+240)/2=270s, min=240s, max=300s
+  assertEquals(result.data.stepPerformance[0].name, "Run tests");
+  assertEquals(result.data.stepPerformance[0].avgDuration, 270);
+  assertEquals(result.data.stepPerformance[0].minDuration, 240);
+  assertEquals(result.data.stepPerformance[0].maxDuration, 300);
+  assertEquals(result.data.stepPerformance[0].count, 2);
+
+  // Upload results: avg=(30+40)/2=35s, min=30s, max=40s
+  assertEquals(result.data.stepPerformance[1].name, "Upload results");
+  assertEquals(result.data.stepPerformance[1].avgDuration, 35);
+  assertEquals(result.data.stepPerformance[1].minDuration, 30);
+  assertEquals(result.data.stepPerformance[1].maxDuration, 40);
+  assertEquals(result.data.stepPerformance[1].count, 2);
+
+  // Checkout code: avg=(30+20)/2=25s, min=20s, max=30s
+  assertEquals(result.data.stepPerformance[2].name, "Checkout code");
+  assertEquals(result.data.stepPerformance[2].avgDuration, 25);
+  assertEquals(result.data.stepPerformance[2].minDuration, 20);
+  assertEquals(result.data.stepPerformance[2].maxDuration, 30);
+  assertEquals(result.data.stepPerformance[2].count, 2);
 });

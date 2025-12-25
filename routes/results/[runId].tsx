@@ -15,11 +15,11 @@ export const handler = define.handlers({
 });
 
 export class RunPageController {
-  #githubClient: Pick<GitHubApiClient, "getWorkflowRun">;
+  #githubClient: Pick<GitHubApiClient, "getWorkflowRun" | "listJobs">;
   #downloader: TestResultsDownloader;
 
   constructor(
-    githubClient: Pick<GitHubApiClient, "getWorkflowRun">,
+    githubClient: Pick<GitHubApiClient, "getWorkflowRun" | "listJobs">,
     downloader: TestResultsDownloader,
   ) {
     this.#githubClient = githubClient;
@@ -38,8 +38,12 @@ export class RunPageController {
       });
     }
 
-    const results = await this.#downloader.downloadForRunId(runId);
-    return { data: { runId, run, results } };
+    const [results, jobs] = await Promise.all([
+      this.#downloader.downloadForRunId(runId),
+      this.#githubClient.listJobs(runId),
+    ]);
+
+    return { data: { runId, run, results, jobs } };
   }
 }
 
@@ -156,8 +160,9 @@ function JobSection({ job }: { job: JobStats }) {
 }
 
 export default define.page<typeof handler>(function TestResultsPage({ data }) {
-  const { runId, run, results } = data;
+  const { runId, run, results, jobs } = data;
   const { stats, jobStats, topAveragedTests } = processTestResults(results);
+  const stepPerformance = processStepPerformance(jobs);
 
   return (
     <div class="container mx-auto px-4 py-8 max-w-7xl">
@@ -270,6 +275,66 @@ export default define.page<typeof handler>(function TestResultsPage({ data }) {
         )}
 
         {jobStats.map((job) => <JobSection job={job} key={job.jobName} />)}
+
+        {stepPerformance.length > 0 && (
+          <div class="bg-white rounded-lg shadow-md">
+            <div class="bg-green-100 px-4 py-3 rounded-t-lg border-b border-green-300">
+              <h2 class="font-semibold text-xl">
+                🔍 Slowest Steps by Average Duration ({stepPerformance.length})
+              </h2>
+              <p class="text-sm text-green-900 mt-1">
+                Workflow steps taking 6+ seconds, averaged across jobs
+              </p>
+            </div>
+            <div class="divide-y divide-gray-200">
+              {stepPerformance.map((step, idx) => (
+                <div
+                  key={idx}
+                  class="px-4 py-3 hover:bg-gray-50 transition-colors"
+                >
+                  <div class="flex items-start justify-between gap-4">
+                    <div class="flex-1 min-w-0">
+                      <div class="font-mono text-sm font-semibold text-gray-900 mb-1">
+                        {step.name}
+                      </div>
+                      <div class="flex items-center gap-4 text-xs text-gray-600">
+                        <span>
+                          Avg:{" "}
+                          <span class="font-semibold">
+                            {formatDuration(step.avgDuration * 1000)}
+                          </span>
+                        </span>
+                        <span>
+                          Min:{" "}
+                          <span class="font-semibold">
+                            {formatDuration(step.minDuration * 1000)}
+                          </span>
+                        </span>
+                        <span>
+                          Max:{" "}
+                          <span class="font-semibold">
+                            {formatDuration(step.maxDuration * 1000)}
+                          </span>
+                        </span>
+                        <span>
+                          Jobs: <span class="font-semibold">{step.count}</span>
+                        </span>
+                      </div>
+                    </div>
+                    <div class="flex-shrink-0">
+                      <div class="bg-green-100 text-green-800 px-3 py-2 rounded text-center">
+                        <div class="text-2xl font-bold">
+                          {formatDuration(step.avgDuration * 1000)}
+                        </div>
+                        <div class="text-xs">avg duration</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -287,6 +352,78 @@ interface ProcessedPageData {
   stats: TestStats;
   jobStats: JobStats[];
   topAveragedTests: NormalizedTest[];
+}
+
+interface StepPerformance {
+  name: string;
+  avgDuration: number;
+  minDuration: number;
+  maxDuration: number;
+  count: number;
+}
+
+export function processStepPerformance(
+  jobs: import("@/lib/github-api-client.ts").WorkflowJob[],
+): StepPerformance[] {
+  const stepPerformanceMap = new Map<
+    string,
+    {
+      totalDuration: number;
+      minDuration: number;
+      maxDuration: number;
+      count: number;
+    }
+  >();
+
+  jobs.forEach((job) => {
+    // Only process steps from "test" jobs
+    if (job.steps && job.name.startsWith("test")) {
+      job.steps.forEach((step) => {
+        if (step.started_at && step.completed_at) {
+          const duration = new Date(step.completed_at).getTime() -
+            new Date(step.started_at).getTime();
+          const durationInSeconds = duration / 1000;
+
+          // Skip steps that take less than 6 seconds
+          if (durationInSeconds < 6) {
+            return;
+          }
+
+          const existing = stepPerformanceMap.get(step.name);
+          if (existing) {
+            existing.totalDuration += durationInSeconds;
+            existing.minDuration = Math.min(
+              existing.minDuration,
+              durationInSeconds,
+            );
+            existing.maxDuration = Math.max(
+              existing.maxDuration,
+              durationInSeconds,
+            );
+            existing.count++;
+          } else {
+            stepPerformanceMap.set(step.name, {
+              totalDuration: durationInSeconds,
+              minDuration: durationInSeconds,
+              maxDuration: durationInSeconds,
+              count: 1,
+            });
+          }
+        }
+      });
+    }
+  });
+
+  // Convert to array and sort by average duration descending
+  return Array.from(stepPerformanceMap.entries())
+    .map(([name, data]) => ({
+      name,
+      avgDuration: data.totalDuration / data.count,
+      minDuration: data.minDuration,
+      maxDuration: data.maxDuration,
+      count: data.count,
+    }))
+    .sort((a, b) => b.avgDuration - a.avgDuration);
 }
 
 export function processTestResults(

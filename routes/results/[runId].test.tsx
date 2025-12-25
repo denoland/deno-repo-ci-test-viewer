@@ -1,6 +1,7 @@
 import { assertEquals } from "@std/assert";
-import { processTestResults } from "./[runId].tsx";
+import { processStepPerformance, processTestResults } from "./[runId].tsx";
 import type { JobTestResults } from "@/lib/test-results-downloader.ts";
+import type { WorkflowJob } from "@/lib/github-api-client.ts";
 
 Deno.test("processTestResults - calculates basic stats correctly", () => {
   const results: JobTestResults[] = [
@@ -447,4 +448,260 @@ Deno.test("processTestResults - calculates total duration per job", () => {
   const result = processTestResults(results);
 
   assertEquals(result.jobStats[0].totalDuration, 350);
+});
+
+Deno.test("processStepPerformance - filters and sorts steps correctly", () => {
+  const jobs: WorkflowJob[] = [
+    {
+      id: 1,
+      run_id: 100,
+      name: "test-linux",
+      status: "completed",
+      conclusion: "success",
+      started_at: "2024-01-01T10:00:00Z",
+      completed_at: "2024-01-01T10:10:00Z",
+      steps: [
+        {
+          name: "Checkout code",
+          status: "completed",
+          conclusion: "success",
+          number: 1,
+          started_at: "2024-01-01T10:00:00Z",
+          completed_at: "2024-01-01T10:00:30Z", // 30 seconds
+        },
+        {
+          name: "Run tests",
+          status: "completed",
+          conclusion: "success",
+          number: 2,
+          started_at: "2024-01-01T10:00:30Z",
+          completed_at: "2024-01-01T10:05:30Z", // 5 minutes = 300 seconds
+        },
+        {
+          name: "Quick step",
+          status: "completed",
+          conclusion: "success",
+          number: 3,
+          started_at: "2024-01-01T10:05:30Z",
+          completed_at: "2024-01-01T10:05:33Z", // 3 seconds (should be filtered out)
+        },
+      ],
+    },
+  ];
+
+  const result = processStepPerformance(jobs);
+
+  // Should have 2 steps (excluding the 3-second step)
+  assertEquals(result.length, 2);
+  // Should be sorted by average duration descending
+  assertEquals(result[0].name, "Run tests");
+  assertEquals(result[0].avgDuration, 300);
+  assertEquals(result[0].count, 1);
+  assertEquals(result[1].name, "Checkout code");
+  assertEquals(result[1].avgDuration, 30);
+  assertEquals(result[1].count, 1);
+});
+
+Deno.test("processStepPerformance - only includes test jobs", () => {
+  const jobs: WorkflowJob[] = [
+    {
+      id: 1,
+      run_id: 100,
+      name: "test-linux",
+      status: "completed",
+      conclusion: "success",
+      started_at: "2024-01-01T10:00:00Z",
+      completed_at: "2024-01-01T10:10:00Z",
+      steps: [
+        {
+          name: "Run tests",
+          status: "completed",
+          conclusion: "success",
+          number: 1,
+          started_at: "2024-01-01T10:00:00Z",
+          completed_at: "2024-01-01T10:01:00Z", // 60 seconds
+        },
+      ],
+    },
+    {
+      id: 2,
+      run_id: 100,
+      name: "build-artifacts",
+      status: "completed",
+      conclusion: "success",
+      started_at: "2024-01-01T10:00:00Z",
+      completed_at: "2024-01-01T10:10:00Z",
+      steps: [
+        {
+          name: "Build",
+          status: "completed",
+          conclusion: "success",
+          number: 1,
+          started_at: "2024-01-01T10:00:00Z",
+          completed_at: "2024-01-01T10:02:00Z", // 120 seconds
+        },
+      ],
+    },
+  ];
+
+  const result = processStepPerformance(jobs);
+
+  // Should only include steps from "test-linux" job
+  assertEquals(result.length, 1);
+  assertEquals(result[0].name, "Run tests");
+  assertEquals(result[0].avgDuration, 60);
+  assertEquals(result[0].count, 1);
+});
+
+Deno.test("processStepPerformance - handles jobs without steps", () => {
+  const jobs: WorkflowJob[] = [
+    {
+      id: 1,
+      run_id: 100,
+      name: "test-linux",
+      status: "completed",
+      conclusion: "success",
+      started_at: "2024-01-01T10:00:00Z",
+      completed_at: "2024-01-01T10:10:00Z",
+      // No steps property
+    },
+  ];
+
+  const result = processStepPerformance(jobs);
+
+  assertEquals(result.length, 0);
+});
+
+Deno.test("processStepPerformance - excludes steps without timing data", () => {
+  const jobs: WorkflowJob[] = [
+    {
+      id: 1,
+      run_id: 100,
+      name: "test-linux",
+      status: "completed",
+      conclusion: "success",
+      started_at: "2024-01-01T10:00:00Z",
+      completed_at: "2024-01-01T10:10:00Z",
+      steps: [
+        {
+          name: "Step with timing",
+          status: "completed",
+          conclusion: "success",
+          number: 1,
+          started_at: "2024-01-01T10:00:00Z",
+          completed_at: "2024-01-01T10:01:00Z",
+        },
+        {
+          name: "Step without timing",
+          status: "completed",
+          conclusion: "success",
+          number: 2,
+          started_at: null,
+          completed_at: null,
+        },
+      ],
+    },
+  ];
+
+  const result = processStepPerformance(jobs);
+
+  assertEquals(result.length, 1);
+  assertEquals(result[0].name, "Step with timing");
+});
+
+Deno.test("processStepPerformance - averages steps across jobs", () => {
+  const jobs: WorkflowJob[] = [
+    {
+      id: 1,
+      run_id: 100,
+      name: "test-linux",
+      status: "completed",
+      conclusion: "success",
+      started_at: "2024-01-01T10:00:00Z",
+      completed_at: "2024-01-01T10:10:00Z",
+      steps: [
+        {
+          name: "Run tests",
+          status: "completed",
+          conclusion: "success",
+          number: 1,
+          started_at: "2024-01-01T10:00:00Z",
+          completed_at: "2024-01-01T10:01:00Z", // 60 seconds
+        },
+        {
+          name: "Upload results",
+          status: "completed",
+          conclusion: "success",
+          number: 2,
+          started_at: "2024-01-01T10:01:00Z",
+          completed_at: "2024-01-01T10:01:20Z", // 20 seconds
+        },
+      ],
+    },
+    {
+      id: 2,
+      run_id: 100,
+      name: "test-windows",
+      status: "completed",
+      conclusion: "success",
+      started_at: "2024-01-01T10:00:00Z",
+      completed_at: "2024-01-01T10:10:00Z",
+      steps: [
+        {
+          name: "Run tests",
+          status: "completed",
+          conclusion: "success",
+          number: 1,
+          started_at: "2024-01-01T10:00:00Z",
+          completed_at: "2024-01-01T10:02:00Z", // 120 seconds
+        },
+        // This job doesn't have "Upload results" step
+      ],
+    },
+    {
+      id: 3,
+      run_id: 100,
+      name: "test-macos",
+      status: "completed",
+      conclusion: "success",
+      started_at: "2024-01-01T10:00:00Z",
+      completed_at: "2024-01-01T10:10:00Z",
+      steps: [
+        {
+          name: "Run tests",
+          status: "completed",
+          conclusion: "success",
+          number: 1,
+          started_at: "2024-01-01T10:00:00Z",
+          completed_at: "2024-01-01T10:01:30Z", // 90 seconds
+        },
+        {
+          name: "Upload results",
+          status: "completed",
+          conclusion: "success",
+          number: 2,
+          started_at: "2024-01-01T10:01:30Z",
+          completed_at: "2024-01-01T10:02:00Z", // 30 seconds
+        },
+      ],
+    },
+  ];
+
+  const result = processStepPerformance(jobs);
+
+  assertEquals(result.length, 2);
+
+  // Run tests appears in all 3 jobs: avg=(60+120+90)/3=90s, min=60s, max=120s
+  assertEquals(result[0].name, "Run tests");
+  assertEquals(result[0].avgDuration, 90);
+  assertEquals(result[0].minDuration, 60);
+  assertEquals(result[0].maxDuration, 120);
+  assertEquals(result[0].count, 3);
+
+  // Upload results appears in only 2 jobs: avg=(20+30)/2=25s, min=20s, max=30s
+  assertEquals(result[1].name, "Upload results");
+  assertEquals(result[1].avgDuration, 25);
+  assertEquals(result[1].minDuration, 20);
+  assertEquals(result[1].maxDuration, 30);
+  assertEquals(result[1].count, 2);
 });

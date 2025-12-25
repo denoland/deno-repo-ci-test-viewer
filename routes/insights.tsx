@@ -5,6 +5,7 @@ import type {
 } from "@/lib/test-results-downloader.ts";
 import type { GitHubApiClient, WorkflowRun } from "@/lib/github-api-client.ts";
 import type { Logger } from "@/lib/logger.ts";
+import { formatDuration } from "@/lib/render.tsx";
 
 export const handler = define.handlers({
   GET(ctx) {
@@ -14,12 +15,12 @@ export const handler = define.handlers({
 
 export class InsightsPageController {
   #logger: Logger;
-  #githubClient: Pick<GitHubApiClient, "listWorkflowRuns">;
+  #githubClient: Pick<GitHubApiClient, "listWorkflowRuns" | "listJobs">;
   #downloader: TestResultsDownloader;
 
   constructor(
     logger: Logger,
-    githubClient: Pick<GitHubApiClient, "listWorkflowRuns">,
+    githubClient: Pick<GitHubApiClient, "listWorkflowRuns" | "listJobs">,
     downloader: TestResultsDownloader,
   ) {
     this.#logger = logger.withContext(InsightsPageController.name);
@@ -41,14 +42,17 @@ export class InsightsPageController {
       )
       .slice(0, 20);
 
-    // Download test results for all runs
+    // Download test results and job timing data for all runs
     const allResults = (await Promise.all(mainBranchRuns.map(async (run) => {
       try {
-        const results = await this.#downloader.downloadForRunId(run.id);
-        return { runId: run.id, run, results };
+        const [results, jobs] = await Promise.all([
+          this.#downloader.downloadForRunId(run.id),
+          this.#githubClient.listJobs(run.id),
+        ]);
+        return { runId: run.id, run, results, jobs };
       } catch (error) {
         this.#logger.logError(
-          `Failed to download results for run ${run.id}:`,
+          `Failed to download data for run ${run.id}:`,
           error,
         );
         return undefined!;
@@ -151,11 +155,100 @@ export class InsightsPageController {
       }
     }
 
-    allResults.forEach(({ runId, results }) => {
+    // Track job performance metrics
+    const jobPerformanceMap = new Map<
+      string,
+      {
+        totalDuration: number;
+        minDuration: number;
+        maxDuration: number;
+        count: number;
+      }
+    >();
+
+    // Track step performance metrics
+    const stepPerformanceMap = new Map<
+      string,
+      {
+        totalDuration: number;
+        minDuration: number;
+        maxDuration: number;
+        count: number;
+      }
+    >();
+
+    allResults.forEach(({ runId, results, jobs }) => {
       results.forEach((jobResult) => {
         jobResult.tests.forEach((test) =>
           processTest(test, runId, jobResult.name)
         );
+      });
+
+      // Process job timing data
+      jobs.forEach((job) => {
+        if (job.started_at && job.completed_at) {
+          const duration = new Date(job.completed_at).getTime() -
+            new Date(job.started_at).getTime();
+          const durationInSeconds = duration / 1000;
+
+          const existing = jobPerformanceMap.get(job.name);
+          if (existing) {
+            existing.totalDuration += durationInSeconds;
+            existing.minDuration = Math.min(
+              existing.minDuration,
+              durationInSeconds,
+            );
+            existing.maxDuration = Math.max(
+              existing.maxDuration,
+              durationInSeconds,
+            );
+            existing.count++;
+          } else {
+            jobPerformanceMap.set(job.name, {
+              totalDuration: durationInSeconds,
+              minDuration: durationInSeconds,
+              maxDuration: durationInSeconds,
+              count: 1,
+            });
+          }
+        }
+
+        // Process step timing data (only for "build" jobs)
+        if (job.steps && job.name.startsWith("test")) {
+          job.steps.forEach((step) => {
+            if (step.started_at && step.completed_at) {
+              const duration = new Date(step.completed_at).getTime() -
+                new Date(step.started_at).getTime();
+              const durationInSeconds = duration / 1000;
+
+              // Skip steps that run fast
+              if (durationInSeconds < 6) {
+                return;
+              }
+
+              const existing = stepPerformanceMap.get(step.name);
+              if (existing) {
+                existing.totalDuration += durationInSeconds;
+                existing.minDuration = Math.min(
+                  existing.minDuration,
+                  durationInSeconds,
+                );
+                existing.maxDuration = Math.max(
+                  existing.maxDuration,
+                  durationInSeconds,
+                );
+                existing.count++;
+              } else {
+                stepPerformanceMap.set(step.name, {
+                  totalDuration: durationInSeconds,
+                  minDuration: durationInSeconds,
+                  maxDuration: durationInSeconds,
+                  count: 1,
+                });
+              }
+            }
+          });
+        }
       });
     });
 
@@ -180,11 +273,35 @@ export class InsightsPageController {
       .map(([name, count]) => ({ name, count }))
       .sort((a, b) => b.count - a.count);
 
+    // Convert job performance to array and sort by average duration
+    const jobPerformance = Array.from(jobPerformanceMap.entries())
+      .map(([name, data]) => ({
+        name,
+        avgDuration: data.totalDuration / data.count,
+        minDuration: data.minDuration,
+        maxDuration: data.maxDuration,
+        count: data.count,
+      }))
+      .sort((a, b) => b.avgDuration - a.avgDuration);
+
+    // Convert step performance to array and sort by average duration
+    const stepPerformance = Array.from(stepPerformanceMap.entries())
+      .map(([name, data]) => ({
+        name,
+        avgDuration: data.totalDuration / data.count,
+        minDuration: data.minDuration,
+        maxDuration: data.maxDuration,
+        count: data.count,
+      }))
+      .sort((a, b) => b.avgDuration - a.avgDuration);
+
     return {
       data: {
         flakyTests,
         failedTests,
         flakyJobs,
+        jobPerformance,
+        stepPerformance,
         totalRunsAnalyzed: mainBranchRuns.length,
         oldestRun: mainBranchRuns[mainBranchRuns.length - 1],
         newestRun: mainBranchRuns[0],
@@ -198,6 +315,8 @@ export default define.page<typeof handler>(function InsightsPage({ data }) {
     flakyTests,
     failedTests,
     flakyJobs,
+    jobPerformance,
+    stepPerformance,
     totalRunsAnalyzed,
     oldestRun,
     newestRun,
@@ -376,7 +495,7 @@ export default define.page<typeof handler>(function InsightsPage({ data }) {
           )}
       </div>
 
-      <div class="bg-white rounded-lg shadow">
+      <div class="bg-white rounded-lg shadow mb-6">
         <div class="bg-purple-100 px-4 py-3 rounded-t-lg border-b border-purple-300">
           <div class="flex items-center justify-between">
             <h2 class="font-semibold text-xl">
@@ -413,6 +532,144 @@ export default define.page<typeof handler>(function InsightsPage({ data }) {
                           {job.count}
                         </div>
                         <div class="text-xs">flaky tests</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+      </div>
+
+      <div class="bg-white rounded-lg shadow mb-6">
+        <div class="bg-blue-100 px-4 py-3 rounded-t-lg border-b border-blue-300">
+          <div class="flex items-center justify-between">
+            <h2 class="font-semibold text-xl">
+              ⏱️ Slowest Jobs by Average Duration ({jobPerformance.length})
+            </h2>
+          </div>
+        </div>
+        {jobPerformance.length === 0
+          ? (
+            <div class="p-8 text-center">
+              <div class="text-6xl mb-4">⏱️</div>
+              <h3 class="text-xl font-bold mb-2">No Job Data Available</h3>
+              <p class="text-gray-600">
+                No job timing information found for the analyzed runs.
+              </p>
+            </div>
+          )
+          : (
+            <div class="divide-y divide-gray-200">
+              {jobPerformance.map((job, idx) => (
+                <div
+                  key={idx}
+                  class="px-4 py-3 hover:bg-gray-50 transition-colors"
+                >
+                  <div class="flex items-start justify-between gap-4">
+                    <div class="flex-1 min-w-0">
+                      <div class="font-mono text-sm font-semibold text-gray-900 mb-1">
+                        {job.name}
+                      </div>
+                      <div class="flex items-center gap-4 text-xs text-gray-600">
+                        <span>
+                          Avg:{" "}
+                          <span class="font-semibold">
+                            {formatDuration(job.avgDuration * 1000)}
+                          </span>
+                        </span>
+                        <span>
+                          Min:{" "}
+                          <span class="font-semibold">
+                            {formatDuration(job.minDuration * 1000)}
+                          </span>
+                        </span>
+                        <span>
+                          Max:{" "}
+                          <span class="font-semibold">
+                            {formatDuration(job.maxDuration * 1000)}
+                          </span>
+                        </span>
+                        <span>
+                          Runs: <span class="font-semibold">{job.count}</span>
+                        </span>
+                      </div>
+                    </div>
+                    <div class="flex-shrink-0">
+                      <div class="bg-blue-100 text-blue-800 px-3 py-2 rounded text-center">
+                        <div class="text-2xl font-bold">
+                          {formatDuration(job.avgDuration * 1000)}
+                        </div>
+                        <div class="text-xs">avg duration</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+      </div>
+
+      <div class="bg-white rounded-lg shadow">
+        <div class="bg-green-100 px-4 py-3 rounded-t-lg border-b border-green-300">
+          <div class="flex items-center justify-between">
+            <h2 class="font-semibold text-xl">
+              🔍 Slowest Steps by Average Duration ({stepPerformance.length})
+            </h2>
+          </div>
+        </div>
+        {stepPerformance.length === 0
+          ? (
+            <div class="p-8 text-center">
+              <div class="text-6xl mb-4">🔍</div>
+              <h3 class="text-xl font-bold mb-2">No Step Data Available</h3>
+              <p class="text-gray-600">
+                No step timing information found for the analyzed runs.
+              </p>
+            </div>
+          )
+          : (
+            <div class="divide-y divide-gray-200">
+              {stepPerformance.map((step, idx) => (
+                <div
+                  key={idx}
+                  class="px-4 py-3 hover:bg-gray-50 transition-colors"
+                >
+                  <div class="flex items-start justify-between gap-4">
+                    <div class="flex-1 min-w-0">
+                      <div class="font-mono text-sm font-semibold text-gray-900 mb-1">
+                        {step.name}
+                      </div>
+                      <div class="flex items-center gap-4 text-xs text-gray-600">
+                        <span>
+                          Avg:{" "}
+                          <span class="font-semibold">
+                            {formatDuration(step.avgDuration * 1000)}
+                          </span>
+                        </span>
+                        <span>
+                          Min:{" "}
+                          <span class="font-semibold">
+                            {formatDuration(step.minDuration * 1000)}
+                          </span>
+                        </span>
+                        <span>
+                          Max:{" "}
+                          <span class="font-semibold">
+                            {formatDuration(step.maxDuration * 1000)}
+                          </span>
+                        </span>
+                        <span>
+                          Runs: <span class="font-semibold">{step.count}</span>
+                        </span>
+                      </div>
+                    </div>
+                    <div class="flex-shrink-0">
+                      <div class="bg-green-100 text-green-800 px-3 py-2 rounded text-center">
+                        <div class="text-2xl font-bold">
+                          {formatDuration(step.avgDuration * 1000)}
+                        </div>
+                        <div class="text-xs">avg duration</div>
                       </div>
                     </div>
                   </div>

@@ -40,6 +40,31 @@ interface ArtifactsListResponse {
   artifacts: Artifact[];
 }
 
+export interface WorkflowStep {
+  name: string;
+  status: string;
+  conclusion: string | null;
+  number: number;
+  started_at: string | null;
+  completed_at: string | null;
+}
+
+export interface WorkflowJob {
+  id: number;
+  run_id: number;
+  name: string;
+  status: string;
+  conclusion: string | null;
+  started_at: string;
+  completed_at: string | null;
+  steps?: WorkflowStep[];
+}
+
+interface JobsListResponse {
+  total_count: number;
+  jobs: WorkflowJob[];
+}
+
 export type GitHubApiClient = ExtractInterface<RealGitHubApiClient>;
 
 export class RealGitHubApiClient {
@@ -135,5 +160,21 @@ export class RealGitHubApiClient {
     }
 
     return await response.blob();
+  }
+
+  async listJobs(runId: number): Promise<WorkflowJob[]> {
+    const url =
+      `https://api.github.com/repos/${OWNER}/${REPO}/actions/runs/${runId}/jobs`;
+
+    const response = await this.#fileFetcher.get(url, this.#getHeaders());
+
+    if (!response.ok) {
+      throw new Error(
+        `Failed to list jobs: ${response.status} ${response.statusText}`,
+      );
+    }
+
+    const data: JobsListResponse = await response.json();
+    return data.jobs;
   }
 }
