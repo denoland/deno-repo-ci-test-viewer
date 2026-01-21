@@ -22,7 +22,9 @@ export interface TestTimelineProps {
   color: "red" | "yellow";
 }
 
-export function TestTimeline({ dateRange, dailyCounts, color }: TestTimelineProps) {
+export function TestTimeline(
+  { dateRange, dailyCounts, color }: TestTimelineProps,
+) {
   if (dateRange.length === 0) {
     return null;
   }
@@ -45,15 +47,18 @@ export function TestTimeline({ dateRange, dailyCounts, color }: TestTimelineProp
   const lastOccurrence = sortedDates[sortedDates.length - 1];
   const lastOccurrenceFormatted = lastOccurrence
     ? new Date(lastOccurrence + "T00:00:00").toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-      })
+      month: "short",
+      day: "numeric",
+    })
     : null;
 
   return (
     <div class="mt-2">
       <div class="flex items-center gap-2">
-        <div class="flex items-end gap-px flex-1" style={{ minWidth: 0, height: "16px" }}>
+        <div
+          class="flex items-end gap-px flex-1"
+          style={{ minWidth: 0, height: "16px" }}
+        >
           {dateRange.map((date) => {
             const count = countsMap.get(date) || 0;
             const height = count > 0 ? Math.max(4, (count / maxCount) * 16) : 2;
@@ -64,7 +69,14 @@ export function TestTimeline({ dateRange, dailyCounts, color }: TestTimelineProp
                 key={date}
                 class="flex-1"
                 style={{ minWidth: "2px", maxWidth: "8px" }}
-                title={`${new Date(date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}: ${count} ${color === "red" ? "failure" : "flake"}${count !== 1 ? "s" : ""}`}
+                title={`${
+                  new Date(date + "T00:00:00").toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                  })
+                }: ${count} ${color === "red" ? "failure" : "flake"}${
+                  count !== 1 ? "s" : ""
+                }`}
               >
                 <div
                   style={{
