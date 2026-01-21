@@ -374,14 +374,14 @@ export class InsightsPageController {
     const oldestDate = allDates[0];
     const today = new Date().toISOString().split("T")[0];
 
-    // Generate all dates from oldest to today
+    // Generate all dates from today to oldest (newest first, left to right)
     const dateRange: string[] = [];
     if (oldestDate) {
-      const current = new Date(oldestDate + "T00:00:00");
-      const end = new Date(today + "T00:00:00");
-      while (current <= end) {
+      const current = new Date(today + "T00:00:00");
+      const end = new Date(oldestDate + "T00:00:00");
+      while (current >= end) {
         dateRange.push(current.toISOString().split("T")[0]);
-        current.setDate(current.getDate() + 1);
+        current.setDate(current.getDate() - 1);
       }
     }
 
