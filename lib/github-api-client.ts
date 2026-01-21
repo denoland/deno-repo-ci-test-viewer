@@ -90,12 +90,16 @@ export class RealGitHubApiClient {
   async listWorkflowRuns(
     perPage = 30,
     page = 1,
+    branch?: string,
   ): Promise<{ runs: WorkflowRun[]; totalCount: number }> {
     const url = new URL(
       `https://api.github.com/repos/${OWNER}/${REPO}/actions/runs`,
     );
     url.searchParams.set("per_page", perPage.toString());
     url.searchParams.set("page", page.toString());
+    if (branch) {
+      url.searchParams.set("branch", branch);
+    }
 
     const response = await this.#fileFetcher.get(url, this.#getHeaders());
 

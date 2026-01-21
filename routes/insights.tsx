@@ -5,7 +5,7 @@ import type {
 } from "@/lib/test-results-downloader.ts";
 import type { GitHubApiClient, WorkflowRun } from "@/lib/github-api-client.ts";
 import type { Logger } from "@/lib/logger.ts";
-import { formatDuration } from "@/lib/render.tsx";
+import { formatDuration, TestTimeline } from "@/lib/render.tsx";
 
 export const handler = define.handlers({
   GET(ctx) {
@@ -29,14 +29,17 @@ export class InsightsPageController {
   }
 
   async get() {
-    // Fetch the last 100 runs (to ensure we get at least 20 completed main branch runs)
-    const { runs: allRuns } = await this.#githubClient.listWorkflowRuns(100, 1);
+    // fetch main branch runs directly
+    const [page1, page2] = await Promise.all([
+      this.#githubClient.listWorkflowRuns(100, 1, "main"),
+      this.#githubClient.listWorkflowRuns(100, 2, "main"),
+    ]);
+    const allRuns = [...page1.runs, ...page2.runs];
 
-    // Filter to only completed CI runs on main branch
+    // Filter to only completed CI runs
     const mainBranchRuns = allRuns
       .filter(
         (run: WorkflowRun) =>
-          run.head_branch === "main" &&
           run.status === "completed" &&
           run.name.toLowerCase() === "ci",
       )
@@ -59,6 +62,12 @@ export class InsightsPageController {
       }
     }))).filter((r) => r != null);
 
+    // Build a map of runId to date for timeline lookups
+    const runIdToDate = new Map<number, string>();
+    allResults.forEach(({ runId, run }) => {
+      runIdToDate.set(runId, run.created_at.split("T")[0]);
+    });
+
     // Analyze flaky tests across all runs
     const flakyTestsMap = new Map<
       string,
@@ -70,6 +79,7 @@ export class InsightsPageController {
         avgFlakyCount: number;
         runIds: number[];
         jobCounts: Map<string, number>;
+        dailyCounts: Map<string, number>; // date -> flaky count
       }
     >();
 
@@ -81,6 +91,7 @@ export class InsightsPageController {
         path: string;
         failureCount: number;
         runIds: number[];
+        dailyCounts: Map<string, number>; // date -> failure count
       }
     >();
 
@@ -92,6 +103,8 @@ export class InsightsPageController {
       runId: number,
       jobName: string,
     ) {
+      const runDate = runIdToDate.get(runId)!;
+
       // Track flaky tests
       if (test.flakyCount && test.flakyCount > 0) {
         const key = `${test.path}::${test.name}`;
@@ -109,6 +122,10 @@ export class InsightsPageController {
             jobName,
             (existing.jobCounts.get(jobName) || 0) + test.flakyCount,
           );
+          existing.dailyCounts.set(
+            runDate,
+            (existing.dailyCounts.get(runDate) || 0) + test.flakyCount,
+          );
         } else {
           flakyTestsMap.set(key, {
             name: test.name,
@@ -118,6 +135,7 @@ export class InsightsPageController {
             avgFlakyCount: test.flakyCount,
             runIds: [runId],
             jobCounts: new Map([[jobName, test.flakyCount]]),
+            dailyCounts: new Map([[runDate, test.flakyCount]]),
           });
         }
 
@@ -138,12 +156,17 @@ export class InsightsPageController {
           if (!existing.runIds.includes(runId)) {
             existing.runIds.push(runId);
           }
+          existing.dailyCounts.set(
+            runDate,
+            (existing.dailyCounts.get(runDate) || 0) + 1,
+          );
         } else {
           failedTestsMap.set(key, {
             name: test.name,
             path: test.path,
             failureCount: 1,
             runIds: [runId],
+            dailyCounts: new Map([[runDate, 1]]),
           });
         }
       }
@@ -177,11 +200,48 @@ export class InsightsPageController {
       }
     >();
 
-    allResults.forEach(({ runId, results, jobs }) => {
+    // Track daily statistics for the chart
+    const dailyStatsMap = new Map<
+      string,
+      {
+        date: string;
+        failureCount: number;
+        flakyCount: number;
+        runCount: number;
+      }
+    >();
+
+    allResults.forEach(({ runId, run, results, jobs }) => {
+      // Aggregate daily stats
+      const dateKey = run.created_at.split("T")[0];
+      let dayStats = dailyStatsMap.get(dateKey);
+      if (!dayStats) {
+        dayStats = {
+          date: dateKey,
+          failureCount: 0,
+          flakyCount: 0,
+          runCount: 0,
+        };
+        dailyStatsMap.set(dateKey, dayStats);
+      }
+      dayStats.runCount++;
+
+      // Count failures and flakes for this run
+      const countTestStats = (tests: RecordedTestResult[]) => {
+        tests.forEach((test) => {
+          if (test.failed) dayStats!.failureCount++;
+          if (test.flakyCount && test.flakyCount > 0) {
+            dayStats!.flakyCount += test.flakyCount;
+          }
+          if (test.subTests) countTestStats(test.subTests);
+        });
+      };
+
       results.forEach((jobResult) => {
         jobResult.tests.forEach((test) =>
           processTest(test, runId, jobResult.name)
         );
+        countTestStats(jobResult.tests);
       });
 
       // Process job timing data
@@ -259,12 +319,26 @@ export class InsightsPageController {
         name,
         count,
       })),
+      dailyCounts: Array.from(test.dailyCounts.entries()).map((
+        [date, count],
+      ) => ({
+        date,
+        count,
+      })),
     })).sort(
       (a, b) => b.totalFlakyCounts - a.totalFlakyCounts,
     );
 
     // Convert to array and sort by failure count
-    const failedTests = Array.from(failedTestsMap.values()).sort(
+    const failedTests = Array.from(failedTestsMap.values()).map((test) => ({
+      ...test,
+      dailyCounts: Array.from(test.dailyCounts.entries()).map((
+        [date, count],
+      ) => ({
+        date,
+        count,
+      })),
+    })).sort(
       (a, b) => b.failureCount - a.failureCount,
     );
 
@@ -295,6 +369,22 @@ export class InsightsPageController {
       }))
       .sort((a, b) => b.avgDuration - a.avgDuration);
 
+    // Get the date range from oldest run to today
+    const allDates = Array.from(runIdToDate.values()).sort();
+    const oldestDate = allDates[0];
+    const today = new Date().toISOString().split("T")[0];
+
+    // Generate all dates from oldest to today
+    const dateRange: string[] = [];
+    if (oldestDate) {
+      const current = new Date(oldestDate + "T00:00:00");
+      const end = new Date(today + "T00:00:00");
+      while (current <= end) {
+        dateRange.push(current.toISOString().split("T")[0]);
+        current.setDate(current.getDate() + 1);
+      }
+    }
+
     return {
       data: {
         flakyTests,
@@ -302,6 +392,7 @@ export class InsightsPageController {
         flakyJobs,
         jobPerformance,
         stepPerformance,
+        dateRange,
         totalRunsAnalyzed: mainBranchRuns.length,
         oldestRun: mainBranchRuns[mainBranchRuns.length - 1],
         newestRun: mainBranchRuns[0],
@@ -317,6 +408,7 @@ export default define.page<typeof handler>(function InsightsPage({ data }) {
     flakyJobs,
     jobPerformance,
     stepPerformance,
+    dateRange,
     totalRunsAnalyzed,
     oldestRun,
     newestRun,
@@ -394,6 +486,11 @@ export default define.page<typeof handler>(function InsightsPage({ data }) {
                           </span>
                         </span>
                       </div>
+                      <TestTimeline
+                        dateRange={dateRange}
+                        dailyCounts={test.dailyCounts}
+                        color="red"
+                      />
                     </div>
                     <div class="flex-shrink-0">
                       <div class="bg-red-100 text-red-800 px-3 py-2 rounded text-center">
@@ -479,6 +576,11 @@ export default define.page<typeof handler>(function InsightsPage({ data }) {
                             ))}
                         </div>
                       )}
+                      <TestTimeline
+                        dateRange={dateRange}
+                        dailyCounts={test.dailyCounts}
+                        color="yellow"
+                      />
                     </div>
                     <div class="flex-shrink-0">
                       <div class="bg-yellow-100 text-yellow-800 px-3 py-2 rounded text-center">
