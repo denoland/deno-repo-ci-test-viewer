@@ -31,9 +31,18 @@ class MockGitHubApiClient
 
   listWorkflowRuns(
     _perPage?: number,
-    _page?: number,
+    page?: number,
+    branch?: string,
   ) {
-    return Promise.resolve(this.#runs);
+    let runs = this.#runs.runs;
+    if (branch) {
+      runs = runs.filter((r) => r.head_branch === branch);
+    }
+    // simulate pagination - page 2+ returns empty
+    if (page && page > 1) {
+      return Promise.resolve({ totalCount: runs.length, runs: [] });
+    }
+    return Promise.resolve({ totalCount: runs.length, runs });
   }
 
   listJobs(runId: number) {
