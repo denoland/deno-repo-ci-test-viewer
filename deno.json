@@ -4,8 +4,7 @@
     "check": "deno fmt --check . && deno lint . && deno check",
     "dev": "vite",
     "build": "vite build",
-    // todo(https://github.com/denoland/deno/pull/31718): remove this --allow-net
-    "start": "deno serve -P --allow-net _fresh/server.js",
+    "start": "deno serve -P _fresh/server.js",
     "update": "deno run -A -r jsr:@fresh/update ."
   },
   "test": {
