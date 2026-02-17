@@ -376,6 +376,72 @@ Deno.test("download multiple artifacts in parallel", async () => {
   );
 });
 
+Deno.test("merge split artifacts by job", async () => {
+  const mockClient = new MockGitHubApiClient();
+  const mockParser = new MockArtifactParser();
+  const mockStore = new MockTestResultArtifactStore();
+
+  const downloader = new RealTestResultsDownloader(
+    mockParser,
+    mockClient,
+    mockStore,
+  );
+
+  // setup artifacts split by suite (new naming convention)
+  const artifacts = [
+    createMockArtifact(
+      1,
+      "test-results-linux-x86_64-debug-integration.json",
+      "https://example.com/1.zip",
+    ),
+    createMockArtifact(
+      2,
+      "test-results-linux-x86_64-debug-unit.json",
+      "https://example.com/2.zip",
+    ),
+    createMockArtifact(
+      3,
+      "test-results-macos-aarch64-debug-specs.json",
+      "https://example.com/3.zip",
+    ),
+  ];
+
+  mockClient.mockArtifacts(444, artifacts);
+  for (let i = 1; i <= 3; i++) {
+    mockClient.mockBlob(`https://example.com/${i}.zip`, new Blob([`test${i}`]));
+  }
+
+  mockParser.mockParseResult(
+    "test-results-linux-x86_64-debug-integration.json",
+    {
+      name: "linux-x86_64-debug-integration",
+      tests: [{ name: "int_test", path: "test/int.ts", duration: 100 }],
+    },
+  );
+  mockParser.mockParseResult("test-results-linux-x86_64-debug-unit.json", {
+    name: "linux-x86_64-debug-unit",
+    tests: [{ name: "unit_test", path: "test/unit.ts", duration: 50 }],
+  });
+  mockParser.mockParseResult(
+    "test-results-macos-aarch64-debug-specs.json",
+    {
+      name: "macos-aarch64-debug-specs",
+      tests: [{ name: "spec_test", path: "test/spec.ts", duration: 200 }],
+    },
+  );
+
+  const results = await downloader.downloadForRunId(444);
+
+  // linux-x86_64-debug artifacts should be merged into one
+  assertEquals(results.length, 2);
+  assertEquals(results[0].name, "linux-x86_64-debug");
+  assertEquals(results[0].tests.length, 2);
+  assertEquals(results[0].tests[0].name, "int_test");
+  assertEquals(results[0].tests[1].name, "unit_test");
+  assertEquals(results[1].name, "macos-aarch64-debug");
+  assertEquals(results[1].tests.length, 1);
+});
+
 Deno.test("store is shared across downloads", async () => {
   const mockClient = new MockGitHubApiClient();
   const mockParser = new MockArtifactParser();
