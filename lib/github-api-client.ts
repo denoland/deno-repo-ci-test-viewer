@@ -136,19 +136,33 @@ export class RealGitHubApiClient {
   }
 
   async listArtifacts(runId: number): Promise<Artifact[]> {
-    const url =
-      `https://api.github.com/repos/${OWNER}/${REPO}/actions/runs/${runId}/artifacts`;
+    const allArtifacts: Artifact[] = [];
+    const maxPages = 10;
 
-    const response = await this.#fileFetcher.get(url, this.#getHeaders());
-
-    if (!response.ok) {
-      throw new Error(
-        `Failed to list artifacts: ${response.status} ${response.statusText}`,
+    for (let page = 1; page <= maxPages; page++) {
+      const url = new URL(
+        `https://api.github.com/repos/${OWNER}/${REPO}/actions/runs/${runId}/artifacts`,
       );
+      url.searchParams.set("per_page", "100");
+      url.searchParams.set("page", page.toString());
+
+      const response = await this.#fileFetcher.get(url, this.#getHeaders());
+
+      if (!response.ok) {
+        throw new Error(
+          `Failed to list artifacts: ${response.status} ${response.statusText}`,
+        );
+      }
+
+      const data: ArtifactsListResponse = await response.json();
+      allArtifacts.push(...data.artifacts);
+
+      if (allArtifacts.length >= data.total_count) {
+        break;
+      }
     }
 
-    const data: ArtifactsListResponse = await response.json();
-    return data.artifacts;
+    return allArtifacts;
   }
 
   async downloadArtifact(archiveDownloadUrl: string): Promise<Blob> {

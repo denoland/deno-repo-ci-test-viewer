@@ -196,7 +196,7 @@ Deno.test("listArtifacts success", async () => {
   };
 
   mockFetcher.mockResponse(
-    "https://api.github.com/repos/denoland/deno/actions/runs/123/artifacts",
+    "https://api.github.com/repos/denoland/deno/actions/runs/123/artifacts?per_page=100&page=1",
     createMockResponse(mockData),
   );
 
@@ -212,7 +212,7 @@ Deno.test("listArtifacts failure", async () => {
   const client = new RealGitHubApiClient(mockFetcher, "test-token");
 
   mockFetcher.mockResponse(
-    "https://api.github.com/repos/denoland/deno/actions/runs/123/artifacts",
+    "https://api.github.com/repos/denoland/deno/actions/runs/123/artifacts?per_page=100&page=1",
     new Response(null, { status: 401, statusText: "Unauthorized" }),
   );
 
