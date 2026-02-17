@@ -163,6 +163,7 @@ export default define.page<typeof handler>(function TestResultsPage({ data }) {
   const { runId, run, results, jobs } = data;
   const { stats, jobStats, topAveragedTests } = processTestResults(results);
   const stepPerformance = processStepPerformance(jobs);
+  const slowestJobs = getSlowestJobs(jobs);
 
   return (
     <div class="container mx-auto px-4 py-8 max-w-7xl">
@@ -276,6 +277,50 @@ export default define.page<typeof handler>(function TestResultsPage({ data }) {
 
         {jobStats.map((job) => <JobSection job={job} key={job.jobName} />)}
 
+        {slowestJobs.length > 0 && (
+          <div class="bg-white rounded-lg shadow-md mb-6">
+            <div class="bg-indigo-100 px-4 py-3 rounded-t-lg border-b border-indigo-300">
+              <h2 class="font-semibold text-xl">
+                🐢 Top {slowestJobs.length} Slowest Jobs
+              </h2>
+              <p class="text-sm text-indigo-900 mt-1">
+                Jobs sorted by total run duration (wall clock time)
+              </p>
+            </div>
+            <div class="divide-y divide-gray-200">
+              {slowestJobs.map((job, idx) => (
+                <div
+                  key={idx}
+                  class="px-4 py-3 hover:bg-gray-50 transition-colors"
+                >
+                  <div class="flex items-center justify-between gap-4">
+                    <div class="flex items-center gap-3 flex-1 min-w-0">
+                      <span class="text-gray-400 text-sm font-mono w-6 text-right">
+                        {idx + 1}.
+                      </span>
+                      <span class="font-mono text-sm truncate">{job.name}</span>
+                      {job.conclusion && job.conclusion !== "success" && (
+                        <span
+                          class={`text-xs px-2 py-0.5 rounded ${
+                            job.conclusion === "failure"
+                              ? "bg-red-100 text-red-800"
+                              : "bg-gray-100 text-gray-700"
+                          }`}
+                        >
+                          {job.conclusion}
+                        </span>
+                      )}
+                    </div>
+                    <div class="flex-shrink-0 font-semibold text-sm">
+                      {formatDuration(job.duration)}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {stepPerformance.length > 0 && (
           <div class="bg-white rounded-lg shadow-md">
             <div class="bg-green-100 px-4 py-3 rounded-t-lg border-b border-green-300">
@@ -354,6 +399,12 @@ interface ProcessedPageData {
   topAveragedTests: NormalizedTest[];
 }
 
+interface SlowestJob {
+  name: string;
+  duration: number;
+  conclusion: string | null;
+}
+
 interface StepPerformance {
   name: string;
   avgDuration: number;
@@ -424,6 +475,21 @@ export function processStepPerformance(
       count: data.count,
     }))
     .sort((a, b) => b.avgDuration - a.avgDuration);
+}
+
+export function getSlowestJobs(
+  jobs: import("@/lib/github-api-client.ts").WorkflowJob[],
+): SlowestJob[] {
+  return jobs
+    .filter((job) => job.started_at && job.completed_at)
+    .map((job) => ({
+      name: job.name,
+      duration: new Date(job.completed_at!).getTime() -
+        new Date(job.started_at).getTime(),
+      conclusion: job.conclusion,
+    }))
+    .sort((a, b) => b.duration - a.duration)
+    .slice(0, 15);
 }
 
 export function processTestResults(
