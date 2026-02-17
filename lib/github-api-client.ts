@@ -167,18 +167,32 @@ export class RealGitHubApiClient {
   }
 
   async listJobs(runId: number): Promise<WorkflowJob[]> {
-    const url =
-      `https://api.github.com/repos/${OWNER}/${REPO}/actions/runs/${runId}/jobs`;
+    const allJobs: WorkflowJob[] = [];
+    const maxPages = 10;
 
-    const response = await this.#fileFetcher.get(url, this.#getHeaders());
-
-    if (!response.ok) {
-      throw new Error(
-        `Failed to list jobs: ${response.status} ${response.statusText}`,
+    for (let page = 1; page <= maxPages; page++) {
+      const url = new URL(
+        `https://api.github.com/repos/${OWNER}/${REPO}/actions/runs/${runId}/jobs`,
       );
+      url.searchParams.set("per_page", "100");
+      url.searchParams.set("page", page.toString());
+
+      const response = await this.#fileFetcher.get(url, this.#getHeaders());
+
+      if (!response.ok) {
+        throw new Error(
+          `Failed to list jobs: ${response.status} ${response.statusText}`,
+        );
+      }
+
+      const data: JobsListResponse = await response.json();
+      allJobs.push(...data.jobs);
+
+      if (allJobs.length >= data.total_count) {
+        break;
+      }
     }
 
-    const data: JobsListResponse = await response.json();
-    return data.jobs;
+    return allJobs;
   }
 }

@@ -168,7 +168,17 @@ export default define.page<typeof handler>(function TestResultsPage({ data }) {
   return (
     <div class="container mx-auto px-4 py-8 max-w-7xl">
       <div class="mb-8">
-        <h1 class="text-3xl font-bold mb-2">Test Results for Run #{runId}</h1>
+        <h1 class="text-3xl font-bold mb-2">
+          Test Results for Run{" "}
+          <a
+            href={`https://github.com/denoland/deno/actions/runs/${runId}`}
+            class="text-blue-600 hover:text-blue-800"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            #{runId}
+          </a>
+        </h1>
         <div class="text-gray-600 mb-2">
           Branch: <span class="font-semibold">{run.head_branch}</span>
         </div>
